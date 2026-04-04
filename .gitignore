@@ -1,0 +1,12 @@
+# Private/runtime local state
+auth.json
+sessions/
+git/
+settings.json
+keybindings.json
+
+# Build / tooling artifacts
+node_modules/
+*.log
+*.tmp
+.DS_Store

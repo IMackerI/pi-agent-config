@@ -1,0 +1,12 @@
+{
+  "name": "pi-agent-config-imackeri",
+  "version": "0.1.0",
+  "description": "Pi extensions, skills, and prompts used by IMackerI",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "pi": {
+    "extensions": ["./extensions"],
+    "skills": ["./skills"],
+    "prompts": ["./prompts"]
+  }
+}
