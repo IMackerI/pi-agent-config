@@ -1,39 +1,16 @@
 # Global Agent Preferences (Pi)
+The role of this file is to describe common mistakes and confusion points that are applicable across the whole system. If you ever encounter anything that surprises you, allert the developer and note it down here or in the project-specific AGENTS.md to preven future agents from making the same mistake.
+
+## Project AGENTS.md Policy
+- Use Project AGENTS.md to note down project-specific quirks, that surprised you.
+- Store at `.agents/rules/AGENTS.md` (to avoid cluttering project root). When initializing this file, add a description similar to this one, but specific to the project.
 
 ## Environment
 - OS: Arch Linux
 - Shell: fish
 - Python: always use a project-local `.venv`, managed with `uv`
-- JavaScript tooling: prefer `bun` / `bunx` over `npm` unless a project explicitly requires npm
-- In Pi, `/tmp` is accessible (no special restriction needed)
+- JavaScript tooling: prefer `bun` / `bunx` over `npm`
 
-## Persistent Knowledge Policy
-- If you learn something important about the user, system, or common workflows, persist it.
-- Pi does not have a separate "knowledge items" store, so use AGENTS.md files as persistent memory.
-- Save project-specific knowledge in the project’s AGENTS file (see below).
-- Save cross-project/system-level knowledge in this global file (`~/.pi/agent/AGENTS.md`).
+## Surprising Global Quirks
 
-## Project AGENTS.md Policy
-- Prefer storing project AI documentation at: `.agents/rules/AGENTS.md` (to avoid cluttering project root).
-- For any non-trivial task in a repository, if this file does not exist, create it.
-- Keep it comprehensive and useful for someone new to the project (architecture, conventions, setup, tests, common commands, pitfalls, best practices).
-- Keep it in sync whenever relevant project information changes.
-- If a command fails in a way that reveals useful project constraints, document that in the project AGENTS file.
-- After each new feature, update the project AGENTS file.
-
-## Practical Defaults
-- Prefer commands and snippets compatible with fish when shell-specific behavior matters.
-- Prefer reproducible, project-local tooling and documented workflows over ad-hoc global setup.
-
-## User Workflow Preferences
-- For browser research tasks, prefer **DuckDuckGo** over Google Search.
-- On DuckDuckGo result pages, wait for the **DuckAssist / AI summary** to load before capturing snapshots. This often contains the definitive answer and saves time.
-- **Ask Mode (/ask):** When the user uses `/ask`, do not change any files. For simple questions, prefer answering directly without heavy tool usage, but use tools if necessary for context.
-- **Planning questionnaire UI:** Use `ask_user_questions` sparingly. Prefer normal chat flow by default; use the questionnaire mainly when the user explicitly says we are planning features and wants structured multi-question input.
-- **/plan workflow preference:** Keep /plan clarifications low-friction (usually 1 phase, max 2), keep the agent in the foreground (no hidden background planner), and produce larger implementation tasks (not exploration tasks) in PLAN.md.
-
-## Pi Package Git Workflow
-- Maintain `~/.pi/agent` as a git repo for extension/skill/prompt versioning.
-- Develop changes on the `development` branch.
-- Keep `main` stable and only move stable sets there.
-- Prefer tagging stable releases on `main` (e.g. `v0.1.0`) for reproducible installs.
+(remove this and fill sequentially as you discover them)

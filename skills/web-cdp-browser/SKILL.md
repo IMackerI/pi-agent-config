@@ -6,7 +6,7 @@ compatibility: Requires a Chromium-based browser running locally with --remote-d
 
 # Web CDP Browser
 
-Use this skill when the user wants browser automation, web browsing, or DOM interaction.
+Use this skill when the user wants browser automation, web browsing, complex web searches, or DOM interaction.
 
 ## Preconditions
 
