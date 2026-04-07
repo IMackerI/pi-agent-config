@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
+import { Key, matchesKey, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -29,7 +29,7 @@ const PLAN_PROMPT_APPEND = `
 - Prefer larger tasks over tiny fragments.
 - During /plan, focus on planning only: do not implement features yet.
 - Do not modify source files during /plan except PLAN.md updates needed for the plan.
-- Do not run mutating setup commands during /plan unless user explicitly asks for that in this turn.
+- Non-mutating discovery is encouraged during /plan (including web search and curl when useful).
 - Write or update PLAN.md in the repo root.
 - PLAN.md must include:
   1) short summary at top
@@ -129,36 +129,26 @@ async function showPlanReviewOverlay(ctx: any, planText: string): Promise<PlanRe
 
 				const out: string[] = [];
 				const push = (line = "") => out.push(truncateToWidth(line, width));
-				const top = `╭${"─".repeat(Math.max(1, width - 2))}╮`;
-				const divider = `├${"─".repeat(Math.max(1, width - 2))}┤`;
-				const bottom = `╰${"─".repeat(Math.max(1, width - 2))}╯`;
+				const innerW = Math.max(1, width - 2);
+				const boxLine = (inner: string, borderStyle: "normal" | "accent" = "normal") => {
+					const truncated = truncateToWidth(inner, innerW);
+					const pad = " ".repeat(Math.max(0, innerW - visibleWidth(truncated)));
+					const borderColor = borderStyle === "accent" ? "borderAccent" : "border";
+					return theme.fg(borderColor, "│") + truncated + pad + theme.fg(borderColor, "│");
+				};
+				const top = `╭${"─".repeat(innerW)}╮`;
+				const divider = `├${"─".repeat(innerW)}┤`;
+				const bottom = `╰${"─".repeat(innerW)}╯`;
 
 				push(theme.fg("borderAccent", top));
-				push(
-					theme.fg(
-						"borderAccent",
-						`│${truncateToWidth(
-							` ${theme.bold("Plan Review")} ${theme.fg("muted", "(foreground session)")}`,
-							Math.max(1, width - 2),
-						)}│`,
-					),
-				);
-				push(
-					theme.fg(
-						"border",
-						`│${truncateToWidth(
-							` ${theme.fg("dim", "↑↓ scroll • Tab switch focus • Enter action • Esc cancel")}`,
-							Math.max(1, width - 2),
-						)}│`,
-					),
-				);
+				push(boxLine(` ${theme.bold("Plan Review")} ${theme.fg("muted", "(foreground session)")}`, "accent"));
+				push(boxLine(` ${theme.fg("dim", "↑↓ scroll • Tab switch focus • Enter action • Esc cancel")}`));
 				push(theme.fg("border", divider));
 
 				for (let i = 0; i < contentHeight; i++) {
 					const line = lines[scroll + i] ?? "";
 					const prefix = focus === "content" && i === 0 ? theme.fg("accent", "▌") : " ";
-					const body = truncateToWidth(`${prefix}${line}`, Math.max(1, width - 2));
-					push(theme.fg("border", `│`) + body + theme.fg("border", `│`));
+					push(boxLine(`${prefix}${line}`));
 				}
 
 				push(theme.fg("border", divider));
@@ -171,7 +161,7 @@ async function showPlanReviewOverlay(ctx: any, planText: string): Promise<PlanRe
 					: theme.fg("accent", " Request changes ");
 
 				const actions = `${closeLabel}  ${reviseLabel}`;
-				push(theme.fg("border", `│`) + truncateToWidth(` ${actions}`, Math.max(1, width - 2)) + theme.fg("border", `│`));
+				push(boxLine(` ${actions}`));
 				push(theme.fg("borderAccent", bottom));
 
 				cachedWidth = width;
@@ -223,7 +213,7 @@ async function showPlanReviewOverlay(ctx: any, planText: string): Promise<PlanRe
 			overlayOptions: {
 				anchor: "center",
 				width: "84%",
-				minWidth: 80,
+				minWidth: 60,
 				maxHeight: "90%",
 				margin: 1,
 			},
@@ -418,9 +408,27 @@ export default function planWorkflow(pi: ExtensionAPI) {
 		if (activeMode === "plan" && ctx.hasUI) {
 			const repoRoot = await detectRepoRoot(pi, ctx.cwd);
 			const planPath = join(repoRoot, "PLAN.md");
-			if (await exists(planPath)) {
+			if (!(await exists(planPath))) {
+				ctx.ui.notify(`Plan review skipped: PLAN.md not found at ${planPath}`, "warning");
+			} else {
 				const planText = await readFile(planPath, "utf8");
-				const action = await showPlanReviewOverlay(ctx, planText);
+				let action: PlanReviewAction = "close";
+				try {
+					action = await showPlanReviewOverlay(ctx, planText);
+				} catch {
+					const wantsRevise = await ctx.ui.confirm(
+						"Plan review",
+						"Could not open the custom review popup. Request changes to PLAN.md?",
+					);
+					action = wantsRevise ? "revise" : "close";
+				}
+				if (action === "cancel") {
+					const wantsRevise = await ctx.ui.confirm(
+						"Plan review",
+						"Plan popup was dismissed. Request changes to PLAN.md?",
+					);
+					action = wantsRevise ? "revise" : "close";
+				}
 				if (action === "revise") {
 					const note = await ctx.ui.editor("Requested changes to PLAN.md", "");
 					if (note && note.trim()) {
