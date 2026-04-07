@@ -52,6 +52,7 @@ pi uninstall git:github.com/IMackerI/pi-agent-config
 
 - `extensions/`
   - `cdp-browser.ts`
+  - `interactive-shell.ts`
   - `planning-questionnaire.ts`
   - `plan-workflow.ts`
 - `skills/`
@@ -59,6 +60,11 @@ pi uninstall git:github.com/IMackerI/pi-agent-config
   - `web-cdp-browser/`
 - `prompts/`
   - `ask.md`
+
+## Compaction behavior
+
+This package no longer overrides session compaction.
+Use Pi’s default `/compact` command when you want to compact conversation context.
 
 ## Branching workflow
 
