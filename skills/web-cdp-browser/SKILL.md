@@ -1,12 +1,14 @@
 ---
 name: web-cdp-browser
-description: Browse websites and interact with page DOM elements using Chrome DevTools Protocol tools (cdp_connect, cdp_navigate, cdp_snapshot, cdp_click, cdp_type, cdp_eval, cdp_html, cdp_screenshot, cdp_console_watch, cdp_network_har, cdp_perf_trace). Use when the user asks for web browsing, scraping, form filling, UI interaction, or page inspection, including network/performance debugging.
-compatibility: Requires a Chromium-based browser running locally with --remote-debugging-port=9222 (or another HTTP CDP endpoint).
+description: Debug local websites via Chrome DevTools Protocol tools (cdp_connect, cdp_navigate, cdp_snapshot, cdp_click, cdp_type, cdp_wait_for, cdp_console_watch, cdp_network_har, cdp_screenshot). Use for localhost/dev-site inspection and interaction.
+compatibility: Requires a Chromium-based browser running locally with --remote-debugging-port=9222 (or another local CDP endpoint).
 ---
 
-# Web CDP Browser
+# Local Web Debugging (CDP)
 
-Use this skill when the user wants browser automation, web browsing, complex web searches, or DOM interaction.
+Use this skill when the user wants to debug **local** websites (localhost, 127.0.0.1, LAN dev hosts).
+
+Do **not** use this skill for general internet search. Use `brave_web_search` (or Brave search skills) instead.
 
 ## Preconditions
 
@@ -31,21 +33,17 @@ end
 ## Tool flow
 
 1. `cdp_connect` to validate endpoint and pick an active tab.
-2. `cdp_navigate` or `cdp_new_tab` to open a page.
-3. `cdp_snapshot` to read current content.
+2. `cdp_navigate` to open a local page.
+3. `cdp_snapshot` to read current page content.
 4. Use `cdp_click`, `cdp_type`, and `cdp_wait_for` for interaction.
-5. Use `cdp_eval` for targeted JS extraction and `cdp_html` for markup.
-6. Use `cdp_console_watch` to capture console warnings/errors during a scenario.
-7. Use `cdp_network_har` to record requests and export a HAR file.
-8. Use `cdp_perf_trace` to capture quick page performance metrics.
-9. Use `cdp_screenshot` when visual confirmation is needed.
+5. Use `cdp_console_watch` to capture warnings/errors.
+6. Use `cdp_network_har` to capture and export network requests.
+7. Use `cdp_screenshot` for visual confirmation.
 
 ## Operating guidelines
 
-- Prefer `cdp_snapshot` first before acting.
-- For web search tasks, prefer **DuckDuckGo** over Google Search.
-- On DuckDuckGo, wait for the **DuckAssist / AI summary** to render (it often appears at the top) before snapshotting. This can save multiple tool calls by providing the answer immediately.
+- Prefer local URLs and local CDP endpoints.
 - Use stable selectors (`id`, `name`, `data-*`) over brittle deep CSS.
 - After interactions that may trigger navigation, wait (`cdp_wait_for` or built-in wait options).
-- Keep extraction focused and concise.
-- If blocked by login/captcha/2FA, report clearly and request user help.
+- For local failures, verify server process, host, and port before retrying.
+- If blocked by auth/captcha/manual step, report clearly and ask for user help.

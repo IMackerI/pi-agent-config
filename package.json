@@ -4,6 +4,13 @@
   "description": "Pi extensions, skills, and prompts used by IMackerI",
   "keywords": ["pi-package"],
   "license": "MIT",
+  "scripts": {
+    "lint": "bun run scripts/lint-extensions.ts",
+    "test": "bun run test:smoke",
+    "test:smoke": "bun run smoke:cdp && bun run smoke:brave",
+    "smoke:cdp": "bun run scripts/smoke-cdp.ts",
+    "smoke:brave": "bun run scripts/smoke-brave.ts"
+  },
   "pi": {
     "extensions": ["./extensions"],
     "skills": ["./skills"],

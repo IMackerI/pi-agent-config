@@ -1,74 +1,71 @@
-# pi-agent-config
+# HUMAN.md
 
 Personal Pi package containing extensions, skills, and prompts.
 
-## Install (tell Pi to do it)
+Pi is itself very unopinionated, so I made some opinioneated tools for myself. I try to keep the minimalizm of Pi. The idea is to not add too much to context as it mostly confuses the agent.
 
-In your Pi chat, just ask the agent to install this package.
+Still most of them are vibe coded and not as tuned as I would like, use with caution.
 
-Examples:
-- "Install `git:github.com/IMackerI/pi-agent-config`"
-- "Install `git:github.com/IMackerI/pi-agent-config@v0.1.0` (stable tag)"
-- "Install `git:github.com/IMackerI/pi-agent-config@development` (latest dev)"
+## Setup
 
-If you prefer direct CLI commands, these are equivalent:
-
+### Install from GitHub:
 ```bash
 pi install git:github.com/IMackerI/pi-agent-config
 pi install git:github.com/IMackerI/pi-agent-config@v0.1.0
 pi install git:github.com/IMackerI/pi-agent-config@development
 ```
 
-## Enable/disable pieces after install
-
-Ask Pi to open package config and toggle resources:
-- "Open `pi config` and let me disable some extensions/skills/prompts"
-
-Direct CLI:
-
+### Configure which tools you want:
 ```bash
 pi config
 ```
 
-## Remove completely
-
-Ask Pi:
-- "Remove/uninstall `git:github.com/IMackerI/pi-agent-config`"
-
-Direct CLI:
-
+### If you want the Brave Search tool:
 ```bash
-pi remove git:github.com/IMackerI/pi-agent-config
-# or
-pi uninstall git:github.com/IMackerI/pi-agent-config
+export BRAVE_SEARCH_API_KEY="your-key"
 ```
 
-## Customize
+### Bigger changes
+If you want to change how the tools operate, just tell pi to make a branch of the package and edit the code directly.
 
-- Easiest: install `@development` and iterate.
-- For your own variant: fork this repo, edit resources, and install from your fork URL/tag/branch.
+## Two-tool architecture
+
+This config now intentionally splits browsing into two specialized paths.
+Backward compatibility with the old all-in-one CDP workflow is **not** guaranteed:
+
+
+1. **Local website debugging (CDP)**
+   - Extension: `extensions/cdp-browser.ts`
+   - Purpose: debug local apps (`localhost`, `127.0.0.1`, LAN/private dev hosts)
+   - Guardrails: local URLs/endpoints by default, explicit override for non-local targets
+
+2. **Internet web search (Brave Search API)**
+   - Extension: `extensions/brave-search.ts`
+   - Tool: `brave_web_search`
+   - Purpose: docs/fact/research search without browser automation
+
+## Required environment
+
+For Brave search tool:
+
+```bash
+export BRAVE_SEARCH_API_KEY="your-key"
+```
+Get key: https://api.search.brave.com
+
 
 ## Contents
 
 - `extensions/`
+  - `brave-search.ts`
   - `cdp-browser.ts`
   - `interactive-shell.ts`
   - `planning-questionnaire.ts`
   - `plan-workflow.ts`
 - `skills/`
+  - `brave-web-search/`
+  - `pi-self-modify-guide/`
   - `planning-questionnaire/`
   - `web-cdp-browser/`
 - `prompts/`
   - `ask.md`
-
-## Compaction behavior
-
-This package no longer overrides session compaction.
-Use Pi’s default `/compact` command when you want to compact conversation context.
-
-## Branching workflow
-
-- `main` = stable releases used day to day
-- `development` = active iteration branch
-
-Create stable sets by merging/cherry-picking to `main` and tagging (`vX.Y.Z`).

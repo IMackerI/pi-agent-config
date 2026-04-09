@@ -24,10 +24,10 @@ type BrowserState = {
 };
 
 const DEFAULT_ENDPOINT = "http://127.0.0.1:9222";
-const STATE_ENTRY = "cdp-browser-state";
+const STATE_ENTRY = "cdp-local-debug-state";
 
 class CdpClient {
-	private ws: any;
+	private ws: WebSocket | undefined;
 	private nextId = 1;
 	private pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }>();
 	private waiters = new Map<string, Array<{ resolve: (value: any) => void; reject: (error: Error) => void; timeout: NodeJS.Timeout }>>();
@@ -36,39 +36,29 @@ class CdpClient {
 	constructor(private readonly wsUrl: string) {}
 
 	async connect(timeoutMs = 8000): Promise<void> {
-		if (this.ws && this.ws.readyState === 1) return;
 		if (typeof WebSocket === "undefined") {
 			throw new Error("WebSocket is not available in this Node runtime.");
 		}
+		if (this.ws && this.ws.readyState === 1) return;
 
 		this.ws = new WebSocket(this.wsUrl);
-
 		await new Promise<void>((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				reject(new Error(`Timed out connecting to CDP websocket after ${timeoutMs}ms: ${this.wsUrl}`));
 			}, timeoutMs);
 
-			this.ws.onopen = () => {
+			this.ws!.onopen = () => {
 				clearTimeout(timeout);
 				resolve();
 			};
-
-			this.ws.onerror = () => {
+			this.ws!.onerror = () => {
 				clearTimeout(timeout);
 				reject(new Error(`Failed to connect to CDP websocket: ${this.wsUrl}`));
 			};
 		});
 
 		this.ws.onmessage = (event: { data: any }) => {
-			let raw = "";
-			if (typeof event.data === "string") {
-				raw = event.data;
-			} else if (Buffer.isBuffer(event.data)) {
-				raw = event.data.toString("utf8");
-			} else {
-				raw = String(event.data);
-			}
-
+			const raw = typeof event.data === "string" ? event.data : Buffer.isBuffer(event.data) ? event.data.toString("utf8") : String(event.data);
 			let message: any;
 			try {
 				message = JSON.parse(raw);
@@ -81,7 +71,6 @@ class CdpClient {
 				if (!pending) return;
 				clearTimeout(pending.timeout);
 				this.pending.delete(message.id);
-
 				if (message.error) {
 					pending.reject(new Error(`CDP error ${message.error.code}: ${message.error.message}`));
 				} else {
@@ -90,22 +79,21 @@ class CdpClient {
 				return;
 			}
 
-			if (typeof message.method === "string") {
-				for (const listener of this.listeners) {
-					try {
-						listener(message.method, message.params);
-					} catch {
-						// Listener failures should not break protocol processing.
-					}
+			if (typeof message.method !== "string") return;
+			for (const listener of this.listeners) {
+				try {
+					listener(message.method, message.params);
+				} catch {
+					// Ignore listener failures.
 				}
-
-				const queue = this.waiters.get(message.method);
-				if (!queue || queue.length === 0) return;
-				const waiter = queue.shift();
-				if (!waiter) return;
-				clearTimeout(waiter.timeout);
-				waiter.resolve(message.params);
 			}
+
+			const queue = this.waiters.get(message.method);
+			if (!queue || queue.length === 0) return;
+			const waiter = queue.shift();
+			if (!waiter) return;
+			clearTimeout(waiter.timeout);
+			waiter.resolve(message.params);
 		};
 
 		this.ws.onclose = () => {
@@ -120,13 +108,11 @@ class CdpClient {
 
 		const id = this.nextId++;
 		const payload = JSON.stringify({ id, method, params });
-
 		const resultPromise = new Promise<any>((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				this.pending.delete(id);
 				reject(new Error(`CDP call timed out: ${method}`));
 			}, timeoutMs);
-
 			this.pending.set(id, { resolve, reject, timeout });
 		});
 
@@ -136,9 +122,7 @@ class CdpClient {
 
 	onEvent(listener: (method: string, params: any) => void): () => void {
 		this.listeners.add(listener);
-		return () => {
-			this.listeners.delete(listener);
-		};
+		return () => this.listeners.delete(listener);
 	}
 
 	async waitForEvent(method: string, timeoutMs = 10000): Promise<any> {
@@ -149,8 +133,10 @@ class CdpClient {
 		return await new Promise<any>((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				const queue = this.waiters.get(method) ?? [];
-				const next = queue.filter((entry) => entry.resolve !== resolve);
-				this.waiters.set(method, next);
+				this.waiters.set(
+					method,
+					queue.filter((entry) => entry.resolve !== resolve),
+				);
 				reject(new Error(`Timed out waiting for CDP event: ${method}`));
 			}, timeoutMs);
 
@@ -182,6 +168,100 @@ class CdpClient {
 			this.waiters.delete(method);
 		}
 	}
+}
+
+function normalizeEndpoint(endpoint: string): string {
+	const trimmed = endpoint.trim().replace(/\/$/, "");
+	let parsed: URL;
+	try {
+		parsed = new URL(trimmed);
+	} catch {
+		throw new Error(`Invalid CDP endpoint URL: ${endpoint}`);
+	}
+	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+		throw new Error(`CDP endpoint must use http:// or https://. Got: ${endpoint}`);
+	}
+	return parsed.toString().replace(/\/$/, "");
+}
+
+function isPrivateIpv4(hostname: string): boolean {
+	if (!/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return false;
+	const parts = hostname.split(".").map((x) => Number(x));
+	if (parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) return false;
+	if (parts[0] === 10) return true;
+	if (parts[0] === 127) return true;
+	if (parts[0] === 192 && parts[1] === 168) return true;
+	if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+	if (parts[0] === 169 && parts[1] === 254) return true;
+	if (parts[0] === 0) return true;
+	return false;
+}
+
+function isLocalHostname(hostname: string): boolean {
+	const host = hostname.toLowerCase();
+	if (!host) return false;
+	if (host === "localhost" || host.endsWith(".localhost")) return true;
+	if (host === "127.0.0.1" || host === "::1" || host === "[::1]") return true;
+	if (host === "0.0.0.0") return true;
+	if (host === "host.docker.internal") return true;
+	if (host.endsWith(".local") || host.endsWith(".test")) return true;
+	if (isPrivateIpv4(host)) return true;
+	return false;
+}
+
+function isLocalEndpoint(endpoint: string): boolean {
+	try {
+		const parsed = new URL(endpoint);
+		return isLocalHostname(parsed.hostname);
+	} catch {
+		return false;
+	}
+}
+
+function isLocalDebugUrl(rawUrl: string): boolean {
+	let parsed: URL;
+	try {
+		parsed = new URL(rawUrl);
+	} catch {
+		return false;
+	}
+
+	if (parsed.protocol === "about:") return parsed.href === "about:blank";
+	if (parsed.protocol === "file:") return true;
+	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+	return isLocalHostname(parsed.hostname);
+}
+
+function assertLocalDebugUrl(url: string, allowNonLocal: boolean | undefined, fieldLabel: string): void {
+	if (isLocalDebugUrl(url)) return;
+	if (allowNonLocal) return;
+	throw new Error(
+		`${fieldLabel} must target local development hosts by default. Received: ${url}\n` +
+			`If this is intentional, re-run with allowNonLocal=true.`
+	);
+}
+
+function localNavigationHints(url: string): string {
+	let parsed: URL | undefined;
+	try {
+		parsed = new URL(url);
+	} catch {
+		return "";
+	}
+	if (!parsed) return "";
+
+	const port = parsed.port || (parsed.protocol === "https:" ? "443" : parsed.protocol === "http:" ? "80" : "");
+	const host = parsed.hostname;
+	if (!host) return "";
+	if (!isLocalHostname(host)) return "";
+
+	return [
+		"",
+		"Local debugging checklist:",
+		`- Is your dev server running at ${parsed.protocol}//${host}${port ? `:${port}` : ""}?`,
+		"- Is the port correct (e.g. 3000/5173/8080)?",
+		"- If using HTTPS locally, verify cert/trust setup in your browser profile.",
+	].join("\n");
 }
 
 async function fetchJson(endpoint: string, path: string, init?: RequestInit, timeoutMs = 8000): Promise<any> {
@@ -216,7 +296,6 @@ async function createTarget(endpoint: string, url: string): Promise<CdpTarget> {
 
 async function getOrCreateActiveTarget(state: BrowserState): Promise<CdpTarget> {
 	const pages = await listPageTargets(state.endpoint);
-
 	if (state.activeTargetId) {
 		const active = pages.find((target) => target.id === state.activeTargetId);
 		if (active) return active;
@@ -251,6 +330,7 @@ async function withActivePage<T>(state: BrowserState, fn: (client: CdpClient, ta
 	if (!target.webSocketDebuggerUrl) {
 		throw new Error(`Active target has no websocket URL: ${target.id}`);
 	}
+
 	const client = new CdpClient(target.webSocketDebuggerUrl);
 	await client.connect();
 	try {
@@ -270,51 +350,33 @@ async function waitForLoadEvent(client: CdpClient, timeoutMs: number): Promise<v
 			client.waitForEvent("Page.domContentEventFired", timeoutMs),
 		]);
 	} catch {
-		// Ignore timeout; many SPAs don't emit a fresh load event for every navigation.
+		// Ignore timeout for SPA-style transitions.
 	}
 }
 
 function truncateForPrompt(text: string): { text: string; truncated: boolean } {
-	const truncation = truncateHead(text, {
-		maxBytes: DEFAULT_MAX_BYTES,
-		maxLines: DEFAULT_MAX_LINES,
-	});
-	if (!truncation.truncated) {
-		return { text: truncation.content, truncated: false };
-	}
-
+	const truncation = truncateHead(text, { maxBytes: DEFAULT_MAX_BYTES, maxLines: DEFAULT_MAX_LINES });
+	if (!truncation.truncated) return { text: truncation.content, truncated: false };
 	const suffix = `\n\n[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).]`;
 	return { text: truncation.content + suffix, truncated: true };
 }
 
 function defaultScreenshotPath(cwd: string): string {
-	const now = new Date();
-	const stamp = now.toISOString().replace(/[:.]/g, "-");
-	return resolve(cwd, ".pi", "browser", `screenshot-${stamp}.png`);
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	return resolve(cwd, ".pi", "browser", `local-debug-screenshot-${stamp}.png`);
 }
 
 function defaultHarPath(cwd: string): string {
-	const now = new Date();
-	const stamp = now.toISOString().replace(/[:.]/g, "-");
-	return resolve(cwd, ".pi", "browser", `network-${stamp}.har`);
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+	return resolve(cwd, ".pi", "browser", `local-debug-network-${stamp}.har`);
 }
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function validateEndpoint(endpoint: string): string {
-	const normalized = endpoint.trim().replace(/\/$/, "");
-	if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-		throw new Error(`CDP endpoint must start with http:// or https://. Got: ${endpoint}`);
-	}
-	return normalized;
-}
-
 export default function (pi: ExtensionAPI) {
-	let state: BrowserState = {
-		endpoint: DEFAULT_ENDPOINT,
-	};
+	let state: BrowserState = { endpoint: DEFAULT_ENDPOINT };
 
 	const persistState = () => {
 		pi.appendEntry(STATE_ENTRY, { ...state });
@@ -327,32 +389,42 @@ export default function (pi: ExtensionAPI) {
 			const data = entry.data as Partial<BrowserState> | undefined;
 			if (!data?.endpoint) continue;
 			state = {
-				endpoint: validateEndpoint(data.endpoint),
+				endpoint: normalizeEndpoint(data.endpoint),
 				activeTargetId: data.activeTargetId,
 			};
 		}
-		ctx.ui.setStatus("cdp-browser", `CDP ${state.endpoint}`);
+		ctx.ui.setStatus("cdp-local-debug", `CDP local ${state.endpoint}`);
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
-		ctx.ui.setStatus("cdp-browser", undefined);
+		ctx.ui.setStatus("cdp-local-debug", undefined);
 	});
 
 	pi.registerTool({
 		name: "cdp_connect",
-		label: "CDP Connect",
-		description:
-			"Connect to a local Chrome DevTools Protocol endpoint (default http://127.0.0.1:9222), validate connectivity, and select an active tab.",
-		promptSnippet: "Connect to a local browser via CDP before browsing or DOM interaction.",
+		label: "CDP Connect (Local Debug)",
+		description: "Connect to a local Chrome DevTools endpoint and select an active tab for local website debugging.",
+		promptSnippet: "Connect to a local CDP browser endpoint before local website debugging.",
 		parameters: Type.Object({
-			endpoint: Type.Optional(Type.String({ description: "HTTP CDP endpoint, e.g. http://127.0.0.1:9222" })),
+			endpoint: Type.Optional(Type.String({ description: "HTTP CDP endpoint, defaults to http://127.0.0.1:9222" })),
 			targetId: Type.Optional(Type.String({ description: "Optional target/tab id to make active after connecting" })),
+			allowRemoteEndpoint: Type.Optional(Type.Boolean({ description: "Allow non-local CDP endpoint", default: false })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			state.endpoint = validateEndpoint(params.endpoint ?? DEFAULT_ENDPOINT);
+			const endpoint = normalizeEndpoint(params.endpoint ?? DEFAULT_ENDPOINT);
+			if (!isLocalEndpoint(endpoint) && params.allowRemoteEndpoint !== true) {
+				throw new Error(
+					`Endpoint must be local by default. Received: ${endpoint}\n` +
+					`Use allowRemoteEndpoint=true only when you intentionally debug a remote browser.`
+				);
+			}
+			state.endpoint = endpoint;
+
 			const version = await fetchJson(state.endpoint, "/json/version").catch((error: Error) => {
 				throw new Error(
-					`Failed to connect to CDP endpoint ${state.endpoint}. ${error.message}\nStart Chrome with: google-chrome-stable --remote-debugging-port=9222 --user-data-dir=/tmp/pi-cdp-profile --no-first-run --no-default-browser-check`
+					`Failed to connect to CDP endpoint ${state.endpoint}. ${error.message}\n` +
+					`For local debugging, start Chrome with:\n` +
+					`google-chrome-stable --remote-debugging-port=9222 --user-data-dir=/tmp/pi-cdp-profile --no-first-run --no-default-browser-check`
 				);
 			});
 
@@ -373,7 +445,7 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			persistState();
-			ctx.ui.setStatus("cdp-browser", `CDP ${state.endpoint}`);
+			ctx.ui.setStatus("cdp-local-debug", `CDP local ${state.endpoint}`);
 
 			const activeTitle = pages.find((target) => target.id === state.activeTargetId)?.title ?? "(new tab)";
 			return {
@@ -397,25 +469,19 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "cdp_tabs",
 		label: "CDP Tabs",
-		description: "List open page tabs available on the connected CDP browser.",
+		description: "List open page tabs on the connected CDP browser.",
 		parameters: Type.Object({}),
 		async execute() {
 			const pages = await listPageTargets(state.endpoint);
 			if (pages.length === 0) {
-				return {
-					content: [{ type: "text", text: "No page tabs found." }],
-					details: { tabs: [] },
-				};
+				return { content: [{ type: "text", text: "No page tabs found." }], details: { tabs: [] } };
 			}
 			const lines = pages.map((tab, index) => {
 				const active = tab.id === state.activeTargetId ? "*" : " ";
 				const title = (tab.title || "(untitled)").replace(/\s+/g, " ").trim();
 				return `${active} [${index + 1}] ${tab.id} | ${title} | ${tab.url || "about:blank"}`;
 			});
-			return {
-				content: [{ type: "text", text: lines.join("\n") }],
-				details: { tabs: pages, activeTargetId: state.activeTargetId },
-			};
+			return { content: [{ type: "text", text: lines.join("\n") }], details: { tabs: pages, activeTargetId: state.activeTargetId } };
 		},
 	});
 
@@ -429,9 +495,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params) {
 			const pages = await listPageTargets(state.endpoint);
 			const selected = pages.find((target) => target.id === params.targetId);
-			if (!selected) {
-				throw new Error(`Target not found: ${params.targetId}`);
-			}
+			if (!selected) throw new Error(`Target not found: ${params.targetId}`);
 			state.activeTargetId = selected.id;
 			persistState();
 			return {
@@ -442,48 +506,32 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
-		name: "cdp_new_tab",
-		label: "CDP New Tab",
-		description: "Open a new tab with an optional URL and make it active.",
-		parameters: Type.Object({
-			url: Type.Optional(Type.String({ description: "Initial URL (defaults to about:blank)" })),
-		}),
-		async execute(_toolCallId, params) {
-			const target = await createTarget(state.endpoint, params.url ?? "about:blank");
-			state.activeTargetId = target.id;
-			persistState();
-			return {
-				content: [{ type: "text", text: `Opened new tab ${target.id} at ${target.url || params.url || "about:blank"}` }],
-				details: { tab: target, activeTargetId: state.activeTargetId },
-			};
-		},
-	});
-
-	pi.registerTool({
 		name: "cdp_navigate",
-		label: "CDP Navigate",
-		description: "Navigate the active tab to a URL and wait briefly for load events.",
-		promptSnippet: "Navigate browser tab to a URL when the user asks to open a page.",
+		label: "CDP Navigate (Local)",
+		description: "Navigate the active tab to a local URL and wait briefly for load events.",
+		promptSnippet: "Open a local development URL in the active CDP tab.",
 		parameters: Type.Object({
-			url: Type.String({ description: "Destination URL" }),
+			url: Type.String({ description: "Destination URL (local hosts by default)" }),
 			timeoutMs: Type.Optional(Type.Number({ description: "Navigation wait timeout in milliseconds", default: 15000 })),
+			allowNonLocal: Type.Optional(Type.Boolean({ description: "Allow non-local URL", default: false })),
 		}),
 		async execute(_toolCallId, params) {
+			assertLocalDebugUrl(params.url, params.allowNonLocal, "url");
 			return await withActivePage(state, async (client) => {
-				await client.send("Page.navigate", { url: params.url });
+				const nav = await client.send("Page.navigate", { url: params.url });
+				if (typeof nav?.errorText === "string" && nav.errorText.trim().length > 0) {
+					throw new Error(`Navigation failed: ${nav.errorText}${localNavigationHints(params.url)}`);
+				}
 				await waitForLoadEvent(client, params.timeoutMs ?? 15000);
 
 				const snapshot = await evalInPage(
 					client,
 					"(() => ({ title: document.title || '', url: location.href, readyState: document.readyState }))()"
 				);
+				assertLocalDebugUrl(snapshot.url, params.allowNonLocal, "Final URL");
+
 				return {
-					content: [
-						{
-							type: "text",
-							text: `Navigated to ${snapshot.url}\nTitle: ${snapshot.title}\nreadyState: ${snapshot.readyState}`,
-						},
-					],
+					content: [{ type: "text", text: `Navigated to ${snapshot.url}\nTitle: ${snapshot.title}\nreadyState: ${snapshot.readyState}` }],
 					details: snapshot,
 				};
 			});
@@ -494,7 +542,7 @@ export default function (pi: ExtensionAPI) {
 		name: "cdp_snapshot",
 		label: "CDP Snapshot",
 		description: "Capture a text snapshot of the active page (URL, title, and body text).",
-		promptSnippet: "Read the current page content after navigation or interaction.",
+		promptSnippet: "Read local page content after navigation or interaction.",
 		parameters: Type.Object({
 			maxTextChars: Type.Optional(Type.Number({ description: "Soft limit before truncation metadata (default 12000)", default: 12000 })),
 		}),
@@ -504,17 +552,11 @@ export default function (pi: ExtensionAPI) {
 					client,
 					`(() => {
 						const rawText = (document.body?.innerText || '').replace(/\\n{3,}/g, '\\n\\n').trim();
-						const links = Array.from(document.querySelectorAll('a[href]')).slice(0, 25).map((a) => ({
+						const links = Array.from(document.querySelectorAll('a[href]')).slice(0, 20).map((a) => ({
 							text: (a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120),
 							href: a.getAttribute('href') || ''
 						}));
-						return {
-							title: document.title || '',
-							url: location.href,
-							readyState: document.readyState,
-							text: rawText,
-							links
-						};
+						return { title: document.title || '', url: location.href, readyState: document.readyState, text: rawText, links };
 					})()`
 				);
 
@@ -522,22 +564,11 @@ export default function (pi: ExtensionAPI) {
 				const softLimit = Math.max(1000, Math.floor(params.maxTextChars ?? 12000));
 				const softClipped = rawText.length > softLimit ? `${rawText.slice(0, softLimit)}\n\n[Soft-clipped before truncation utility]` : rawText;
 				const truncated = truncateForPrompt(softClipped);
-
-				const lines = [
-					`URL: ${data.url}`,
-					`Title: ${data.title}`,
-					`Ready: ${data.readyState}`,
-					"",
-					truncated.text,
-				];
+				const lines = [`URL: ${data.url}`, `Title: ${data.title}`, `Ready: ${data.readyState}`, "", truncated.text];
 
 				return {
 					content: [{ type: "text", text: lines.join("\n") }],
-					details: {
-						...data,
-						textLength: rawText.length,
-						truncated: truncated.truncated,
-					},
+					details: { ...data, textLength: rawText.length, truncated: truncated.truncated },
 				};
 			});
 		},
@@ -547,7 +578,7 @@ export default function (pi: ExtensionAPI) {
 		name: "cdp_click",
 		label: "CDP Click",
 		description: "Click an element in the active page via CSS selector.",
-		promptSnippet: "Click buttons/links by CSS selector for browser automation tasks.",
+		promptSnippet: "Click buttons/links by CSS selector for local website debugging.",
 		parameters: Type.Object({
 			selector: Type.String({ description: "CSS selector for the element to click" }),
 			waitForLoad: Type.Optional(Type.Boolean({ description: "Wait for load events after click", default: true })),
@@ -575,7 +606,6 @@ export default function (pi: ExtensionAPI) {
 				if (!clickResult?.ok) {
 					throw new Error(`Click failed for selector ${params.selector}: ${clickResult?.error || "unknown error"}`);
 				}
-
 				if (params.waitForLoad !== false) {
 					await waitForLoadEvent(client, params.timeoutMs ?? 10000);
 				}
@@ -592,7 +622,7 @@ export default function (pi: ExtensionAPI) {
 		name: "cdp_type",
 		label: "CDP Type",
 		description: "Type text into an input or textarea selected by CSS selector.",
-		promptSnippet: "Fill forms by typing text into fields.",
+		promptSnippet: "Fill local page forms by typing text into fields.",
 		parameters: Type.Object({
 			selector: Type.String({ description: "CSS selector for input/textarea/contenteditable" }),
 			text: Type.String({ description: "Text to type" }),
@@ -638,19 +668,13 @@ export default function (pi: ExtensionAPI) {
 								submitted = true;
 							}
 						}
-						return {
-							ok: true,
-							tag: target.tagName,
-							submitted,
-							length: text.length
-						};
+						return { ok: true, tag: target.tagName, submitted, length: text.length };
 					})()`
 				);
 
 				if (!result?.ok) {
 					throw new Error(`Type failed for selector ${params.selector}: ${result?.error || "unknown error"}`);
 				}
-
 				if (result.submitted && params.waitForLoad !== false) {
 					await waitForLoadEvent(client, params.timeoutMs ?? 10000);
 				}
@@ -686,7 +710,7 @@ export default function (pi: ExtensionAPI) {
 						found = true;
 						break;
 					}
-					await new Promise((resolve) => setTimeout(resolve, pollMs));
+					await sleep(pollMs);
 				}
 
 				if (!found) {
@@ -702,67 +726,20 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
-		name: "cdp_eval",
-		label: "CDP Eval",
-		description: "Evaluate JavaScript in the active page and return JSON-serializable output.",
-		parameters: Type.Object({
-			expression: Type.String({ description: "JavaScript expression evaluated in page context" }),
-		}),
-		async execute(_toolCallId, params) {
-			return await withActivePage(state, async (client) => {
-				const value = await evalInPage(client, params.expression, true);
-				const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
-				const truncated = truncateForPrompt(text ?? "null");
-				return {
-					content: [{ type: "text", text: truncated.text }],
-					details: { value, truncated: truncated.truncated },
-				};
-			});
-		},
-	});
-
-	pi.registerTool({
-		name: "cdp_html",
-		label: "CDP HTML",
-		description: "Get outer HTML for the full page or a CSS selector.",
-		parameters: Type.Object({
-			selector: Type.Optional(Type.String({ description: "Optional CSS selector" })),
-		}),
-		async execute(_toolCallId, params) {
-			return await withActivePage(state, async (client) => {
-				const selectorLiteral = JSON.stringify(params.selector ?? "");
-				const html = await evalInPage(
-					client,
-					`(() => {
-						const selector = ${selectorLiteral};
-						if (!selector) return document.documentElement?.outerHTML || '';
-						const el = document.querySelector(selector);
-						if (!el) return null;
-						return el.outerHTML;
-					})()`
-				);
-				if (html === null) {
-					throw new Error(`Selector not found: ${params.selector}`);
-				}
-				const truncated = truncateForPrompt(String(html));
-				return {
-					content: [{ type: "text", text: truncated.text }],
-					details: { selector: params.selector, truncated: truncated.truncated, length: String(html).length },
-				};
-			});
-		},
-	});
-
-	pi.registerTool({
 		name: "cdp_console_watch",
 		label: "CDP Console Watch",
-		description: "Capture console errors/warnings/messages from the active page over a short observation window.",
+		description: "Capture console errors/warnings from the active page over a short observation window.",
 		parameters: Type.Object({
 			durationMs: Type.Optional(Type.Number({ description: "How long to observe console output", default: 5000 })),
-			navigateUrl: Type.Optional(Type.String({ description: "Optional URL to navigate to before observing" })),
+			navigateUrl: Type.Optional(Type.String({ description: "Optional local URL to navigate to before observing" })),
+			allowNonLocal: Type.Optional(Type.Boolean({ description: "Allow non-local navigateUrl", default: false })),
 			includeInfo: Type.Optional(Type.Boolean({ description: "Include info/debug/log console output", default: false })),
 		}),
 		async execute(_toolCallId, params) {
+			if (params.navigateUrl) {
+				assertLocalDebugUrl(params.navigateUrl, params.allowNonLocal, "navigateUrl");
+			}
+
 			return await withActivePage(state, async (client) => {
 				const durationMs = Math.max(250, Math.floor(params.durationMs ?? 5000));
 				const includeInfo = params.includeInfo === true;
@@ -786,12 +763,7 @@ export default function (pi: ExtensionAPI) {
 							})
 							.join(" ")
 							.trim();
-						entries.push({
-							level,
-							source: "console",
-							text: text || "(empty message)",
-							ts: Date.now(),
-						});
+						entries.push({ level, source: "console", text: text || "(empty message)", ts: Date.now() });
 						return;
 					}
 
@@ -813,7 +785,11 @@ export default function (pi: ExtensionAPI) {
 				});
 
 				if (params.navigateUrl) {
-					await client.send("Page.navigate", { url: params.navigateUrl });
+					const nav = await client.send("Page.navigate", { url: params.navigateUrl });
+					if (typeof nav?.errorText === "string" && nav.errorText.trim().length > 0) {
+						unsubscribe();
+						throw new Error(`Navigation failed: ${nav.errorText}${localNavigationHints(params.navigateUrl)}`);
+					}
 					await waitForLoadEvent(client, 15000);
 				}
 
@@ -824,12 +800,8 @@ export default function (pi: ExtensionAPI) {
 					acc[entry.level] = (acc[entry.level] ?? 0) + 1;
 					return acc;
 				}, {});
-
 				const sorted = [...entries].sort((a, b) => a.ts - b.ts);
-				const previewLines = sorted.map((entry, index) => {
-					const age = `${entry.ts - startedAt}ms`;
-					return `[${index + 1}] ${entry.level.toUpperCase()} (${entry.source}, +${age}) ${entry.text}`;
-				});
+				const previewLines = sorted.map((entry, index) => `[${index + 1}] ${entry.level.toUpperCase()} (${entry.source}, +${entry.ts - startedAt}ms) ${entry.text}`);
 
 				const summary = [
 					`Console watch complete (${durationMs}ms).`,
@@ -842,14 +814,7 @@ export default function (pi: ExtensionAPI) {
 				const truncated = truncateForPrompt(summary);
 				return {
 					content: [{ type: "text", text: truncated.text }],
-					details: {
-						durationMs,
-						navigateUrl: params.navigateUrl,
-						entryCount: entries.length,
-						counts,
-						entries,
-						truncated: truncated.truncated,
-					},
+					details: { durationMs, navigateUrl: params.navigateUrl, entryCount: entries.length, counts, entries, truncated: truncated.truncated },
 				};
 			});
 		},
@@ -858,13 +823,18 @@ export default function (pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "cdp_network_har",
 		label: "CDP Network HAR",
-		description: "Capture network activity and export a HAR file with a concise latency/error summary.",
+		description: "Capture local network activity and export HAR with concise latency/error summary.",
 		parameters: Type.Object({
 			durationMs: Type.Optional(Type.Number({ description: "How long to record network traffic", default: 7000 })),
-			navigateUrl: Type.Optional(Type.String({ description: "Optional URL to navigate to before recording" })),
-			path: Type.Optional(Type.String({ description: "Output HAR path (defaults to .pi/browser/network-*.har)" })),
+			navigateUrl: Type.Optional(Type.String({ description: "Optional local URL to navigate to before recording" })),
+			allowNonLocal: Type.Optional(Type.Boolean({ description: "Allow non-local navigateUrl", default: false })),
+			path: Type.Optional(Type.String({ description: "Output HAR path (defaults to .pi/browser/local-debug-network-*.har)" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			if (params.navigateUrl) {
+				assertLocalDebugUrl(params.navigateUrl, params.allowNonLocal, "navigateUrl");
+			}
+
 			return await withActivePage(state, async (client) => {
 				const durationMs = Math.max(500, Math.floor(params.durationMs ?? 7000));
 				type RecordItem = {
@@ -942,7 +912,11 @@ export default function (pi: ExtensionAPI) {
 				});
 
 				if (params.navigateUrl) {
-					await client.send("Page.navigate", { url: params.navigateUrl });
+					const nav = await client.send("Page.navigate", { url: params.navigateUrl });
+					if (typeof nav?.errorText === "string" && nav.errorText.trim().length > 0) {
+						unsubscribe();
+						throw new Error(`Navigation failed: ${nav.errorText}${localNavigationHints(params.navigateUrl)}`);
+					}
 					await waitForLoadEvent(client, 15000);
 				}
 
@@ -951,11 +925,11 @@ export default function (pi: ExtensionAPI) {
 
 				const all = [...records.values()];
 				const withDuration = all.map((item) => {
-					const duration =
+					const durationMs =
 						typeof item.startTs === "number" && typeof item.endTs === "number"
 							? Math.max(0, (item.endTs - item.startTs) * 1000)
 							: undefined;
-					return { ...item, durationMs: duration };
+					return { ...item, durationMs };
 				});
 
 				const failures = withDuration.filter((item) => item.failed || (item.status ?? 0) >= 400);
@@ -969,15 +943,8 @@ export default function (pi: ExtensionAPI) {
 				const har = {
 					log: {
 						version: "1.2",
-						creator: { name: "pi-cdp-browser", version: "1.0" },
-						pages: [
-							{
-								id: "page_1",
-								startedDateTime,
-								title: "CDP capture",
-								pageTimings: {},
-							},
-						],
+						creator: { name: "pi-cdp-local-debug", version: "2.0" },
+						pages: [{ id: "page_1", startedDateTime, title: "Local debug capture", pageTimings: {} }],
 						entries: withDuration.map((item) => ({
 							pageref: "page_1",
 							startedDateTime: new Date(item.startWallTimeMs).toISOString(),
@@ -1007,11 +974,7 @@ export default function (pi: ExtensionAPI) {
 								bodySize: item.encodedDataLength ?? -1,
 							},
 							cache: {},
-							timings: {
-								send: 0,
-								wait: item.durationMs ?? 0,
-								receive: 0,
-							},
+							timings: { send: 0, wait: item.durationMs ?? 0, receive: 0 },
 							_serverIPAddress: "",
 							_connection: "",
 						})),
@@ -1054,110 +1017,10 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerTool({
-		name: "cdp_perf_trace",
-		label: "CDP Perf Trace",
-		description: "Capture key performance metrics and timeline events for the active page over a short window.",
-		parameters: Type.Object({
-			durationMs: Type.Optional(Type.Number({ description: "How long to capture metrics", default: 5000 })),
-			navigateUrl: Type.Optional(Type.String({ description: "Optional URL to navigate to before measuring" })),
-		}),
-		async execute(_toolCallId, params) {
-			return await withActivePage(state, async (client) => {
-				const durationMs = Math.max(500, Math.floor(params.durationMs ?? 5000));
-				const timelineEvents: Array<{ name: string; duration?: number; ts?: number }> = [];
-
-				await client.send("Performance.enable");
-				try {
-					await client.send("PerformanceTimeline.enable", {
-						eventTypes: ["longtask", "largest-contentful-paint", "layout-shift"],
-					});
-				} catch {
-					// Some Chrome/CDP versions may not expose PerformanceTimeline.
-				}
-
-				const unsubscribe = client.onEvent((method, eventParams) => {
-					if (method !== "PerformanceTimeline.timelineEventAdded") return;
-					const evt = eventParams?.event;
-					if (!evt) return;
-					timelineEvents.push({
-						name: String(evt.name ?? "unknown"),
-						duration: typeof evt.duration === "number" ? evt.duration : undefined,
-						ts: typeof evt.time === "number" ? evt.time : undefined,
-					});
-				});
-
-				if (params.navigateUrl) {
-					await client.send("Page.navigate", { url: params.navigateUrl });
-					await waitForLoadEvent(client, 20000);
-				}
-
-				const before = await client.send("Performance.getMetrics");
-				await sleep(durationMs);
-				const after = await client.send("Performance.getMetrics");
-				unsubscribe();
-
-				const toMap = (metrics: any): Record<string, number> => {
-					const arr = Array.isArray(metrics?.metrics) ? metrics.metrics : [];
-					const out: Record<string, number> = {};
-					for (const metric of arr) {
-						if (typeof metric?.name === "string" && typeof metric?.value === "number") {
-							out[metric.name] = metric.value;
-						}
-					}
-					return out;
-				};
-
-				const beforeMap = toMap(before);
-				const afterMap = toMap(after);
-				const delta = (name: string) => (afterMap[name] ?? 0) - (beforeMap[name] ?? 0);
-
-				const longTasks = timelineEvents.filter((evt) => evt.name === "longtask");
-				const lcpEvents = timelineEvents.filter((evt) => evt.name === "largest-contentful-paint");
-				const clsEvents = timelineEvents.filter((evt) => evt.name === "layout-shift");
-				const maxLongTask = Math.max(0, ...longTasks.map((evt) => evt.duration ?? 0));
-
-				const lines = [
-					`Performance capture complete (${durationMs}ms).`,
-					`FCP: ${afterMap.FirstContentfulPaint ?? "n/a"}`,
-					`LCP: ${afterMap.LargestContentfulPaint ?? "n/a"}`,
-					`CLS: ${afterMap.CumulativeLayoutShift ?? "n/a"}`,
-					`DOM Interactive: ${afterMap.DomInteractive ?? "n/a"}`,
-					`TaskDuration Δ: ${delta("TaskDuration").toFixed(3)}s`,
-					`ScriptDuration Δ: ${delta("ScriptDuration").toFixed(3)}s`,
-					`LayoutDuration Δ: ${delta("LayoutDuration").toFixed(3)}s`,
-					`Long tasks: ${longTasks.length} (max duration: ${maxLongTask.toFixed(2)}ms)`,
-					`LCP events: ${lcpEvents.length}, Layout-shift events: ${clsEvents.length}`,
-				].join("\n");
-
-				return {
-					content: [{ type: "text", text: lines }],
-					details: {
-						durationMs,
-						navigateUrl: params.navigateUrl,
-						metrics: afterMap,
-						deltas: {
-							TaskDuration: delta("TaskDuration"),
-							ScriptDuration: delta("ScriptDuration"),
-							LayoutDuration: delta("LayoutDuration"),
-						},
-						events: {
-							longTaskCount: longTasks.length,
-							maxLongTaskDuration: maxLongTask,
-							lcpCount: lcpEvents.length,
-							layoutShiftCount: clsEvents.length,
-						},
-						timelineEvents,
-					},
-				};
-			});
-		},
-	});
-
-	pi.registerTool({
 		name: "cdp_screenshot",
 		label: "CDP Screenshot",
 		description: "Capture a PNG screenshot of the active page and save to disk.",
-		promptSnippet: "Capture page screenshots when visual confirmation is needed.",
+		promptSnippet: "Capture local page screenshots for debugging confirmation.",
 		parameters: Type.Object({
 			path: Type.Optional(Type.String({ description: "Output path (relative paths resolve from cwd)" })),
 			fullPage: Type.Optional(Type.Boolean({ description: "Capture beyond viewport", default: true })),
