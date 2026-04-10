@@ -43,6 +43,9 @@ Both `path` and `edits` are top-level sibling parameters. Never nest path inside
 ### Backticks and XML in `write` / `edit` content
 Content containing backticks, XML-like tags, or tool invocation syntax will confuse the tool call parser — it interprets them as real tool boundaries.
 
+### Shell heredocs in bash
+Avoid shell heredocs/redirections like `cat <<EOF` in `bash` calls here; prefer `write`/`edit` because the fish shell can parse them unexpectedly.
+
 ---
 
 ## User Preferences
@@ -55,3 +58,6 @@ If relevant, this should be a part of the final output of any agent. When in dou
 - When you were forced to take a shortcut or find a workaround.
 - When you had to make an assumption about something that was not clear.
 - When you find a fundamental limitation that impacts the solution.
+
+### Typecheck
+- typecheck if possible after completing a task.

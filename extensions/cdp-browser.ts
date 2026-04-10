@@ -473,15 +473,19 @@ export default function (pi: ExtensionAPI) {
 		parameters: Type.Object({}),
 		async execute() {
 			const pages = await listPageTargets(state.endpoint);
+			const details: { tabs: CdpTarget[]; activeTargetId?: string } = {
+				tabs: pages,
+				activeTargetId: state.activeTargetId,
+			};
 			if (pages.length === 0) {
-				return { content: [{ type: "text", text: "No page tabs found." }], details: { tabs: [] } };
+				return { content: [{ type: "text", text: "No page tabs found." }], details };
 			}
 			const lines = pages.map((tab, index) => {
 				const active = tab.id === state.activeTargetId ? "*" : " ";
 				const title = (tab.title || "(untitled)").replace(/\s+/g, " ").trim();
 				return `${active} [${index + 1}] ${tab.id} | ${title} | ${tab.url || "about:blank"}`;
 			});
-			return { content: [{ type: "text", text: lines.join("\n") }], details: { tabs: pages, activeTargetId: state.activeTargetId } };
+			return { content: [{ type: "text", text: lines.join("\n") }], details };
 		},
 	});
 
