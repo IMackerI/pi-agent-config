@@ -19,11 +19,17 @@ interface ExecuteReviewContext {
 	feedback?: string;
 }
 
+interface ExecuteCommandOptions {
+	direct: boolean;
+}
+
 interface ExecuteContext {
 	mode: "all" | "selected";
 	tasks: PlanTask[];
 	selectionText: string;
 }
+
+const LAST_PLAN_CUSTOM_TYPE = "plan-workflow-last-plan";
 
 const PLAN_PROMPT_APPEND = [
 	"[PLAN WORKFLOW RULES]",
@@ -181,6 +187,60 @@ function parseStepSelection(raw: string, tasks: PlanTask[]): ExecuteContext {
 
 type ExecuteReviewAction = "confirm" | "revise" | "cancel";
 
+function parseExecuteArgs(raw: string): ExecuteCommandOptions {
+	const tokens = raw.trim().split(/\s+/).filter(Boolean);
+	let direct = false;
+
+	for (const token of tokens) {
+		if (token === "--direct") {
+			direct = true;
+			continue;
+		}
+		throw new Error("Unknown /execute argument '" + token + "'. Supported: --direct");
+	}
+
+	return { direct };
+}
+
+function readPersistedPlanContext(data: unknown): PlanContext | null {
+	if (!data || typeof data !== "object") return null;
+	const value = data as { idea?: unknown; goal?: unknown };
+	if (typeof value.idea !== "string" || typeof value.goal !== "string") return null;
+	return { idea: value.idea, goal: value.goal };
+}
+
+function getLatestPersistedPlanContext(ctx: Pick<ExtensionContext, "sessionManager">): PlanContext | null {
+	const branch = ctx.sessionManager.getBranch();
+	for (let i = branch.length - 1; i >= 0; i--) {
+		const entry = branch[i];
+		if (entry.type !== "custom" || entry.customType !== LAST_PLAN_CUSTOM_TYPE) continue;
+		return readPersistedPlanContext(entry.data);
+	}
+	return null;
+}
+
+function shouldDirectExecuteByDefault(ctx: Pick<ExtensionContext, "sessionManager">): boolean {
+	const branch = ctx.sessionManager.getBranch();
+	let markerIndex = -1;
+
+	for (let i = branch.length - 1; i >= 0; i--) {
+		const entry = branch[i];
+		if (entry.type === "custom" && entry.customType === LAST_PLAN_CUSTOM_TYPE) {
+			markerIndex = i;
+			break;
+		}
+	}
+
+	if (markerIndex < 0) return false;
+
+	for (let i = markerIndex + 1; i < branch.length; i++) {
+		const entry = branch[i];
+		if (entry.type === "message" && entry.message.role === "user") return false;
+	}
+
+	return true;
+}
+
 async function showExecuteReviewOverlay(
 	ctx: Pick<ExtensionContext, "ui">,
 	planText: string,
@@ -286,169 +346,8 @@ export default function planWorkflow(pi: ExtensionAPI) {
 	let pendingExecute: ExecuteContext | null = null;
 	let activeMode: "plan" | "execute-review" | "execute-run" | null = null;
 
-	pi.registerCommand("plan", {
-		description: "Plan a feature/change in the foreground and create/update PLAN.md",
-		handler: async (args, ctx) => {
-			if (!ctx.hasUI) {
-				ctx.ui.notify("/plan requires interactive UI mode", "error");
-				return;
-			}
-
-			let idea = args.trim();
-			if (!idea) {
-				const value = await ctx.ui.editor("Plan idea", "");
-				if (!value || !value.trim()) {
-					ctx.ui.notify("/plan cancelled", "info");
-					return;
-				}
-				idea = value.trim();
-			}
-
-			const goal = await ctx.ui.editor("Final goal", "");
-			if (!goal || !goal.trim()) {
-				ctx.ui.notify("/plan cancelled (missing final goal)", "info");
-				return;
-			}
-
-			pendingPlan = { idea, goal: goal.trim() };
-
-			const kickoff = [
-				"Create or update PLAN.md for this request.",
-				"",
-				"Idea: " + idea,
-				"Final goal: " + goal.trim(),
-				"",
-				"First do needed discovery (repo + web if useful), then produce implementation tasks only.",
-				"Do not include exploration tasks in the final checklist.",
-				"After the plan is done, do not print it in chat. Give only a very brief summary plus your opinions for discussion.",
-			].join("\n");
-
-			if (ctx.isIdle()) {
-				pi.sendUserMessage(kickoff);
-			} else {
-				pi.sendUserMessage(kickoff, { deliverAs: "followUp" });
-			}
-
-			ctx.ui.notify("Planning turn queued (foreground mode).", "info");
-		},
-	});
-
-	pi.registerCommand("execute", {
-		description: "Adapt PLAN.md, review it, then confirm which steps to execute",
-		handler: async (_args, ctx) => {
-			if (!ctx.hasUI) {
-				ctx.ui.notify("/execute requires interactive UI mode", "error");
-				return;
-			}
-
-			const repoRoot = await detectRepoRoot(pi, ctx.cwd);
-			const planPath = join(repoRoot, "PLAN.md");
-			if (!(await exists(planPath))) {
-				ctx.ui.notify("PLAN.md not found at " + planPath + ".", "error");
-				return;
-			}
-
-			const plan = await readFile(planPath, "utf8");
-			const tasks = parsePlanTasks(plan);
-			if (tasks.length === 0) {
-				ctx.ui.notify("No checklist tasks found in PLAN.md.", "error");
-				return;
-			}
-
-			const pending = tasks.filter((task) => task.status !== "x");
-			if (pending.length === 0) {
-				ctx.ui.notify("All PLAN.md tasks are already completed.", "info");
-				return;
-			}
-
-			pendingExecuteReview = {};
-			const kickoff = [
-				"Review PLAN.md and adapt it for execution readiness.",
-				"Use the discussion so far, especially anything we changed after planning.",
-				"Do not implement anything yet.",
-				"Keep the plan simple, minimal, and aligned with the goal.",
-				lastPlanContext ? "" : undefined,
-				lastPlanContext ? "Original idea: " + lastPlanContext.idea : undefined,
-				lastPlanContext ? "Final goal: " + lastPlanContext.goal : undefined,
-			].filter(Boolean).join("\n");
-
-			if (ctx.isIdle()) {
-				pi.sendUserMessage(kickoff);
-			} else {
-				pi.sendUserMessage(kickoff, { deliverAs: "followUp" });
-			}
-
-			ctx.ui.notify("Execution review turn queued.", "info");
-		},
-	});
-
-	pi.on("before_agent_start", async (event) => {
-		if (pendingPlan) {
-			const context = pendingPlan;
-			pendingPlan = null;
-			lastPlanContext = context;
-			activeMode = "plan";
-			return {
-				systemPrompt: event.systemPrompt + "\n\n" + PLAN_PROMPT_APPEND,
-				message: {
-					customType: "plan-context",
-					content: "Plan context\n- Idea: " + context.idea + "\n- Final goal: " + context.goal,
-					display: false,
-				},
-			};
-		}
-
-		if (pendingExecuteReview) {
-			const context = pendingExecuteReview;
-			pendingExecuteReview = null;
-			activeMode = "execute-review";
-			return {
-				systemPrompt: event.systemPrompt + "\n\n" + EXECUTE_REVIEW_PROMPT_APPEND,
-				message: {
-					customType: "execute-review-context",
-					content: context.feedback
-						? "Execution review context\n- Feedback to apply: " + context.feedback
-						: "Execution review context\n- Review PLAN.md and adapt it for execution readiness.",
-					display: false,
-				},
-			};
-		}
-
-		if (pendingExecute) {
-			const context = pendingExecute;
-			pendingExecute = null;
-			activeMode = "execute-run";
-			return {
-				systemPrompt: event.systemPrompt + "\n\n" + EXECUTE_PROMPT_APPEND,
-				message: {
-					customType: "execute-context",
-					content:
-						"Execution context\n- Scope: " +
-						context.selectionText +
-						"\n- Tasks: " +
-						context.tasks.map((task) => "#" + String(task.index) + " (line " + String(task.lineNumber) + ") " + task.text).join("\n"),
-					display: false,
-				},
-			};
-		}
-	});
-
-	pi.on("agent_end", async (_event, ctx) => {
-		const mode = activeMode;
-		activeMode = null;
-
-		if (mode === "plan" && ctx.hasUI) {
-			const repoRoot = await detectRepoRoot(pi, ctx.cwd);
-			const planPath = join(repoRoot, "PLAN.md");
-			if (!(await exists(planPath))) {
-				ctx.ui.notify("Planning finished, but PLAN.md was not found at " + planPath + ".", "warning");
-				return;
-			}
-			ctx.ui.notify("Plan saved to PLAN.md. Discuss the notes in chat, then use /execute when ready.", "info");
-			return;
-		}
-
-		if (mode !== "execute-review" || !ctx.hasUI) return;
+	const runExecuteReviewFlow = async (ctx: ExtensionContext) => {
+		if (!ctx.hasUI) return;
 
 		const repoRoot = await detectRepoRoot(pi, ctx.cwd);
 		const planPath = join(repoRoot, "PLAN.md");
@@ -530,5 +429,195 @@ export default function planWorkflow(pi: ExtensionAPI) {
 		}
 
 		ctx.ui.notify("Execution turn queued for " + selection.selectionText + ".", "info");
+	};
+
+	pi.on("session_start", async (_event, ctx) => {
+		lastPlanContext = getLatestPersistedPlanContext(ctx);
+	});
+
+	pi.registerCommand("plan", {
+		description: "Plan a feature/change in the foreground and create/update PLAN.md",
+		handler: async (args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify("/plan requires interactive UI mode", "error");
+				return;
+			}
+
+			let idea = args.trim();
+			if (!idea) {
+				const value = await ctx.ui.editor("Plan idea", "");
+				if (!value || !value.trim()) {
+					ctx.ui.notify("/plan cancelled", "info");
+					return;
+				}
+				idea = value.trim();
+			}
+
+			const goal = await ctx.ui.editor("Final goal", "");
+			if (!goal || !goal.trim()) {
+				ctx.ui.notify("/plan cancelled (missing final goal)", "info");
+				return;
+			}
+
+			pendingPlan = { idea, goal: goal.trim() };
+
+			const kickoff = [
+				"Create or update PLAN.md for this request.",
+				"",
+				"Idea: " + idea,
+				"Final goal: " + goal.trim(),
+				"",
+				"First do needed discovery (repo + web if useful), then produce implementation tasks only.",
+				"Do not include exploration tasks in the final checklist.",
+				"After the plan is done, do not print it in chat. Give only a very brief summary plus your opinions for discussion.",
+			].join("\n");
+
+			if (ctx.isIdle()) {
+				pi.sendUserMessage(kickoff);
+			} else {
+				pi.sendUserMessage(kickoff, { deliverAs: "followUp" });
+			}
+
+			ctx.ui.notify("Planning turn queued (foreground mode).", "info");
+		},
+	});
+
+	pi.registerCommand("execute", {
+		description: "Review PLAN.md, optionally adapt it, then confirm which steps to execute (--direct skips auto-refactor)",
+		handler: async (args, ctx) => {
+			if (!ctx.hasUI) {
+				ctx.ui.notify("/execute requires interactive UI mode", "error");
+				return;
+			}
+
+			let options: ExecuteCommandOptions;
+			try {
+				options = parseExecuteArgs(args);
+			} catch (error) {
+				ctx.ui.notify(error instanceof Error ? error.message : "Invalid /execute arguments.", "error");
+				return;
+			}
+
+			const repoRoot = await detectRepoRoot(pi, ctx.cwd);
+			const planPath = join(repoRoot, "PLAN.md");
+			if (!(await exists(planPath))) {
+				ctx.ui.notify("PLAN.md not found at " + planPath + ".", "error");
+				return;
+			}
+
+			const plan = await readFile(planPath, "utf8");
+			const tasks = parsePlanTasks(plan);
+			if (tasks.length === 0) {
+				ctx.ui.notify("No checklist tasks found in PLAN.md.", "error");
+				return;
+			}
+
+			const pending = tasks.filter((task) => task.status !== "x");
+			if (pending.length === 0) {
+				ctx.ui.notify("All PLAN.md tasks are already completed.", "info");
+				return;
+			}
+
+			const direct = options.direct || shouldDirectExecuteByDefault(ctx);
+			if (direct) {
+				if (!options.direct) {
+					ctx.ui.notify("No post-plan user message detected; skipping plan refactor and opening review.", "info");
+				}
+				await runExecuteReviewFlow(ctx);
+				return;
+			}
+
+			pendingExecuteReview = {};
+			const kickoff = [
+				"Only do this if we discussed any changes",
+				"Review PLAN.md and adapt it for execution readiness.",
+				"Use the discussion so far, especially anything we changed after planning.",
+				"Do not implement anything yet.",
+				lastPlanContext ? "" : undefined,
+				lastPlanContext ? "Original idea: " + lastPlanContext.idea : undefined,
+				lastPlanContext ? "Final goal: " + lastPlanContext.goal : undefined,
+			].filter(Boolean).join("\n");
+
+			if (ctx.isIdle()) {
+				pi.sendUserMessage(kickoff);
+			} else {
+				pi.sendUserMessage(kickoff, { deliverAs: "followUp" });
+			}
+
+			ctx.ui.notify("Execution review turn queued.", "info");
+		},
+	});
+
+	pi.on("before_agent_start", async (event) => {
+		if (pendingPlan) {
+			const context = pendingPlan;
+			pendingPlan = null;
+			lastPlanContext = context;
+			activeMode = "plan";
+			return {
+				systemPrompt: event.systemPrompt + "\n\n" + PLAN_PROMPT_APPEND,
+				message: {
+					customType: "plan-context",
+					content: "Plan context\n- Idea: " + context.idea + "\n- Final goal: " + context.goal,
+					display: false,
+				},
+			};
+		}
+
+		if (pendingExecuteReview) {
+			const context = pendingExecuteReview;
+			pendingExecuteReview = null;
+			activeMode = "execute-review";
+			return {
+				systemPrompt: event.systemPrompt + "\n\n" + EXECUTE_REVIEW_PROMPT_APPEND,
+				message: {
+					customType: "execute-review-context",
+					content: context.feedback
+						? "Execution review context\n- Feedback to apply: " + context.feedback
+						: "Execution review context\n- Review PLAN.md and adapt it for execution readiness.",
+					display: false,
+				},
+			};
+		}
+
+		if (pendingExecute) {
+			const context = pendingExecute;
+			pendingExecute = null;
+			activeMode = "execute-run";
+			return {
+				systemPrompt: event.systemPrompt + "\n\n" + EXECUTE_PROMPT_APPEND,
+				message: {
+					customType: "execute-context",
+					content:
+						"Execution context\n- Scope: " +
+						context.selectionText +
+						"\n- Tasks: " +
+						context.tasks.map((task) => "#" + String(task.index) + " (line " + String(task.lineNumber) + ") " + task.text).join("\n"),
+					display: false,
+				},
+			};
+		}
+	});
+
+	pi.on("agent_end", async (_event, ctx) => {
+		const mode = activeMode;
+		activeMode = null;
+
+		if (mode === "plan" && ctx.hasUI) {
+			const repoRoot = await detectRepoRoot(pi, ctx.cwd);
+			const planPath = join(repoRoot, "PLAN.md");
+			if (!(await exists(planPath))) {
+				ctx.ui.notify("Planning finished, but PLAN.md was not found at " + planPath + ".", "warning");
+				return;
+			}
+			if (lastPlanContext) {
+				pi.appendEntry(LAST_PLAN_CUSTOM_TYPE, lastPlanContext);
+			}
+			ctx.ui.notify("Plan saved to PLAN.md. Discuss the notes in chat, then use /execute when ready.", "info");
+			return;
+		}
+
+		if (mode !== "execute-review" || !ctx.hasUI) return;
+		await runExecuteReviewFlow(ctx);
 	});
 }

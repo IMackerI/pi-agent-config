@@ -25,7 +25,7 @@ The second purpose is to capture the user preferences for you, the PI agent. Thi
 
 ## Environment
 - OS: Arch Linux
-- Shell: fish
+- Shell: fish (Important)
 - Python: always use a project-local `.venv`, managed with `uv`
 - JavaScript tooling: prefer `bun` / `bunx` over `npm`
 
@@ -43,8 +43,14 @@ Both `path` and `edits` are top-level sibling parameters. Never nest path inside
 ### Backticks and XML in `write` / `edit` content
 Content containing backticks, XML-like tags, or tool invocation syntax will confuse the tool call parser — it interprets them as real tool boundaries.
 
-### Shell heredocs in bash
-Avoid shell heredocs/redirections like `cat <<EOF` in `bash` calls here; prefer `write`/`edit` because the fish shell can parse them unexpectedly.
+### Shell heredocs in fish shell
+Avoid shell heredocs/redirections like `cat <<EOF` in `bash` calls here; prefer `write`/`edit` because the fish shell can parse them unexpectedly. If no other option use:
+```bash
+echo "\
+This is a here document,
+that spans multiple lines\
+"
+```
 
 ---
 
