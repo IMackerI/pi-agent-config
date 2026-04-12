@@ -10,6 +10,8 @@ making the same mistake.
 The second purpose is to capture the user preferences for you, the PI agent. This is also for you to operate more smoothly together with the user.
 
 ## Local project AGENTS.md Policy
+- If the project is small there might not be one. 
+- Feel free to create one if you think it would be useful.
 - Store at `.agents/rules/AGENTS.md`.
 - Use Project AGENTS.md to note down project-specific quirks, that surprised you.
 - Don't duplicate anything from this file. Agent can see both of them.
@@ -25,7 +27,7 @@ The second purpose is to capture the user preferences for you, the PI agent. Thi
 
 ## Environment
 - OS: Arch Linux
-- Shell: fish (Important)
+- Shell: The user uses `fish`; pi should use `bash` internally.
 - Python: always use a project-local `.venv`, managed with `uv`
 - JavaScript tooling: prefer `bun` / `bunx` over `npm`
 
@@ -39,18 +41,10 @@ path: "/absolute/path/to/file.py"
 edits: [ { "oldText": "old code here", "newText": "new code here" } ]
 
 Both `path` and `edits` are top-level sibling parameters. Never nest path inside edits.
+The oldText must match exactly and be unique.
 
 ### Backticks and XML in `write` / `edit` content
 Content containing backticks, XML-like tags, or tool invocation syntax will confuse the tool call parser — it interprets them as real tool boundaries.
-
-### Shell heredocs in fish shell (important)
-Avoid shell heredocs/redirections like `cat <<EOF` in `bash` calls here; prefer `write`/`edit` because the fish shell can parse them unexpectedly. If no other option use:
-```bash
-echo "\
-This is a here document,
-that spans multiple lines\
-"
-```
 
 ---
 

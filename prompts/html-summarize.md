@@ -10,7 +10,7 @@ Requirements:
 1. Pick **one random** website-design theme from the skills in website-design.
 2. Summarize progress so far with focus on:
    - original goal(s)
-   - key implementation steps completed
+   - key implementation steps completed, in detail
    - important decisions/changes
    - current status and immediate next steps
 3. Generate a single standalone HTML file (inline CSS/JS, no external assets).
@@ -24,6 +24,8 @@ Requirements:
 
 Guidelines:
 - This is the place where to explain in detail the progress and decisions made, so be comprehensive.
-- Very important is to make the summary fun for the user to read, so keep the text in a playful spacing. Don't use big blocks of text.
+- Very important is to make the summary fun for the user to read, so keep the text in a playful spacing. Don't use big blocks of text. However, keep the information detailed so the user gains a deep understanding of everything done.
+- Don't hesitate to explain difficult concepts or decisions. The main point of this summary is to be informative.
+- After reading this, the user should be able to dive into the code and understand what is going on.
 - Prioritize the user guidance if provided.
 - Do not modify project source files; only create the summary HTML artifact.

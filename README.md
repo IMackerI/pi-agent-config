@@ -15,6 +15,9 @@ pi install git:github.com/IMackerI/pi-agent-config@v0.1.0
 pi install git:github.com/IMackerI/pi-agent-config@development
 ```
 
+### Reconfigure my system prompts
+The AGENTS.md is made specific to my workflow. Be sure to tell pi to update the prompts for your system after installation.
+
 ### Configure which tools you want:
 ```bash
 pi config
