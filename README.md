@@ -70,6 +70,7 @@ Get key: https://api.search.brave.com
   - `web-cdp-browser/`
 - `prompts/`
   - `ask.md`
+  - `html-summarize.md`
 
 ## Retrospective report
 

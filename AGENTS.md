@@ -60,6 +60,7 @@ that spans multiple lines\
 Thinking tokens are cheap, but the tokens you output to the user are expensive - the user reads them slowly and they cost him time. You want to minimize the output tokens while maintaining all the information.
 - Don't repeat yourself
 - The important part isn't always the summary, but your notes and reporting.
+- If the user wants to know more detailed output, they will ask. Default to shorter responses.
 
 ### Reporting
 If relevant, this should be a part of the final output of any agent. When in doubt, include it to be sure. Here are things the user wants you to report:
