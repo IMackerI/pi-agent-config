@@ -62,6 +62,7 @@ Get key: https://api.search.brave.com
   - `interactive-shell.ts`
   - `planning-questionnaire.ts`
   - `plan-workflow.ts`
+  - `retrospective.ts`
 - `skills/`
   - `brave-web-search/`
   - `pi-self-modify-guide/`
@@ -69,3 +70,17 @@ Get key: https://api.search.brave.com
   - `web-cdp-browser/`
 - `prompts/`
   - `ask.md`
+
+## Retrospective report
+
+Use `/retrospective` to generate a single self-contained HTML analysis of the **current branch**.
+
+- Output directory: `.pi/conversation-retrospectives/`
+- Auto-open: enabled by default
+- Opt out opening: `/retrospective --no-open`
+- Deterministic/heuristic-only mode: `/retrospective --no-notes`
+
+The report includes:
+- session/tool/discovery/error/token stats
+- assistant self-review notes (bounded to messages since last compaction, unless `--no-notes`)
+- full conversation timeline with user prompts and collapsed assistant outputs + metadata (tool wait, output tokens, etc.)

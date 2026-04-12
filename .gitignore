@@ -10,6 +10,7 @@ node_modules/
 *.log
 *.tmp
 .DS_Store
+.pi/conversation-retrospectives/
 
 # Repo Maintenance
 REPO.md

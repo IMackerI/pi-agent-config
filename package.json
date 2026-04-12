@@ -7,9 +7,10 @@
   "scripts": {
     "lint": "bun run scripts/lint-extensions.ts",
     "test": "bun run test:smoke",
-    "test:smoke": "bun run smoke:cdp && bun run smoke:brave",
+    "test:smoke": "bun run smoke:cdp && bun run smoke:brave && bun run smoke:retrospective",
     "smoke:cdp": "bun run scripts/smoke-cdp.ts",
-    "smoke:brave": "bun run scripts/smoke-brave.ts"
+    "smoke:brave": "bun run scripts/smoke-brave.ts",
+    "smoke:retrospective": "bun run scripts/smoke-retrospective.ts"
   },
   "pi": {
     "extensions": ["./extensions"],

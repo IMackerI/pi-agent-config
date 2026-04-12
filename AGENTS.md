@@ -43,7 +43,7 @@ Both `path` and `edits` are top-level sibling parameters. Never nest path inside
 ### Backticks and XML in `write` / `edit` content
 Content containing backticks, XML-like tags, or tool invocation syntax will confuse the tool call parser — it interprets them as real tool boundaries.
 
-### Shell heredocs in fish shell
+### Shell heredocs in fish shell (important)
 Avoid shell heredocs/redirections like `cat <<EOF` in `bash` calls here; prefer `write`/`edit` because the fish shell can parse them unexpectedly. If no other option use:
 ```bash
 echo "\
@@ -55,6 +55,11 @@ that spans multiple lines\
 ---
 
 ## User Preferences
+
+### Be concise
+Thinking tokens are cheap, but the tokens you output to the user are expensive - the user reads them slowly and they cost him time. You want to minimize the output tokens while maintaining all the information.
+- Don't repeat yourself
+- The important part isn't always the summary, but your notes and reporting.
 
 ### Reporting
 If relevant, this should be a part of the final output of any agent. When in doubt, include it to be sure. Here are things the user wants you to report:
