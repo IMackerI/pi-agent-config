@@ -10,6 +10,12 @@ export interface RetrospectiveReport {
 
 const LARGE_BLOCK_PREVIEW_CHARS = 1800;
 
+interface ConversationTurn {
+	index: number;
+	user?: ConversationItem;
+	between: ConversationItem[];
+}
+
 function escapeHtml(input: string): string {
 	return input
 		.replaceAll("&", "&amp;")
@@ -62,6 +68,12 @@ function renderLargeTextBlock(text: string): string {
 	].join("\n");
 }
 
+function searchIndexText(item: ConversationItem): string {
+	const textPart = item.text.slice(0, 1800);
+	const metadataPart = prettyJson(item.metadata).slice(0, 1200);
+	return `${item.kind} ${item.role} ${textPart} ${metadataPart}`.toLowerCase();
+}
+
 function metadataBadges(item: ConversationItem): string {
 	const badges: string[] = [];
 	badges.push(`<span class="badge">${escapeHtml(item.role)}</span>`);
@@ -99,25 +111,28 @@ function metadataBadges(item: ConversationItem): string {
 	return badges.join(" ");
 }
 
-function renderConversationItem(item: ConversationItem): string {
-	const searchText = escapeHtml(`${item.role} ${item.text} ${prettyJson(item.metadata)}`.toLowerCase());
+function renderUserItem(item: ConversationItem): string {
+	const searchText = escapeHtml(searchIndexText(item));
+	const heading = `USER · ${timestampLabel(item.timestampIso)}`;
+	const metadata = metadataBadges(item);
+	return [
+		`<article class="timeline-item user timeline-entry" data-kind="user" data-search="${searchText}">`,
+		`<header><h4>${escapeHtml(heading)}</h4><div class="meta">${metadata}</div></header>`,
+		renderLargeTextBlock(item.text || "(empty)"),
+		"</article>",
+	].join("\n");
+}
+
+function renderNonUserItem(item: ConversationItem): string {
+	const searchText = escapeHtml(searchIndexText(item));
 	const heading = `${item.kind.toUpperCase()} · ${timestampLabel(item.timestampIso)}`;
 	const metadata = metadataBadges(item);
 	const metadataJson = prettyJson(item.metadata);
 
-	if (item.kind === "user") {
-		return [
-			`<article class="timeline-item user" data-kind="${item.kind}" data-search="${searchText}">`,
-			`<header><h4>${escapeHtml(heading)}</h4><div class="meta">${metadata}</div></header>`,
-			renderLargeTextBlock(item.text || "(empty)"),
-			"</article>",
-		].join("\n");
-	}
-
 	if (item.kind === "assistant") {
 		const thinking = typeof item.metadata.thinking === "string" ? item.metadata.thinking : "";
 		return [
-			`<details class="timeline-item assistant" data-kind="${item.kind}" data-search="${searchText}">`,
+			`<details class="timeline-item assistant timeline-entry" data-kind="${item.kind}" data-search="${searchText}">`,
 			`<summary><span>${escapeHtml(heading)}</span><span class="meta">${metadata}</span></summary>`,
 			renderLargeTextBlock(item.text || "(no assistant text output)"),
 			thinking
@@ -134,12 +149,100 @@ function renderConversationItem(item: ConversationItem): string {
 	}
 
 	return [
-		`<details class="timeline-item ${item.kind}" data-kind="${item.kind}" data-search="${searchText}">`,
+		`<details class="timeline-item ${item.kind} timeline-entry" data-kind="${item.kind}" data-search="${searchText}">`,
 		`<summary><span>${escapeHtml(heading)}</span><span class="meta">${metadata}</span></summary>`,
 		renderLargeTextBlock(item.text || "(empty)"),
 		`<details class="nested-expand"><summary>Metadata</summary><pre class="content-block">${escapeHtml(metadataJson)}</pre></details>`,
 		"</details>",
 	].join("\n");
+}
+
+function buildConversationTurns(conversation: ConversationItem[]): ConversationTurn[] {
+	const turns: ConversationTurn[] = [];
+	let current: ConversationTurn | undefined;
+
+	for (const item of conversation) {
+		if (item.kind === "user") {
+			current = { index: turns.length, user: item, between: [] };
+			turns.push(current);
+			continue;
+		}
+
+		if (!current) {
+			current = { index: turns.length, between: [] };
+			turns.push(current);
+		}
+		current.between.push(item);
+	}
+
+	return turns;
+}
+
+function summarizeTurnGroup(items: ConversationItem[]): {
+	title: string;
+	badges: string;
+	searchText: string;
+} {
+	let assistantCount = 0;
+	let toolResultCount = 0;
+	let bashCount = 0;
+	let customCount = 0;
+	let errorCount = 0;
+	let toolWaitMs = 0;
+	const searchParts: string[] = [];
+
+	for (const item of items) {
+		searchParts.push(searchIndexText(item));
+		if (item.kind === "assistant") {
+			assistantCount += 1;
+			toolWaitMs += Number(item.metadata.toolWaitMs ?? 0);
+			const stopReason = String(item.metadata.stopReason ?? "");
+			if (stopReason && stopReason !== "stop" && stopReason !== "toolUse") errorCount += 1;
+		} else if (item.kind === "toolResult") {
+			toolResultCount += 1;
+			if (item.metadata.isError === true) errorCount += 1;
+		} else if (item.kind === "bashExecution") {
+			bashCount += 1;
+			const exitCode = item.metadata.exitCode;
+			if (typeof exitCode === "number" && exitCode !== 0) errorCount += 1;
+		} else if (item.kind === "custom") {
+			customCount += 1;
+		}
+	}
+
+	const title = `Assistant activity until next user message (${items.length} item${items.length === 1 ? "" : "s"})`;
+	const badges: string[] = [];
+	if (assistantCount > 0) badges.push(`<span class="badge">assistant ${assistantCount}</span>`);
+	if (toolResultCount > 0) badges.push(`<span class="badge">tool results ${toolResultCount}</span>`);
+	if (bashCount > 0) badges.push(`<span class="badge">bash ${bashCount}</span>`);
+	if (customCount > 0) badges.push(`<span class="badge">custom ${customCount}</span>`);
+	if (toolWaitMs > 0) badges.push(`<span class="badge">tool wait ${formatMs(toolWaitMs)}</span>`);
+	if (errorCount > 0) badges.push(`<span class="badge badge-error">errors ${errorCount}</span>`);
+
+	return {
+		title,
+		badges: badges.join(" "),
+		searchText: searchParts.join(" ").slice(0, 5000),
+	};
+}
+
+function renderTurn(turn: ConversationTurn): string {
+	const blocks: string[] = [];
+	if (turn.user) blocks.push(renderUserItem(turn.user));
+
+	if (turn.between.length > 0) {
+		const group = summarizeTurnGroup(turn.between);
+		const children = turn.between.map((item) => renderNonUserItem(item)).join("\n");
+		blocks.push([
+			`<details class="turn-group" data-search="${escapeHtml(group.searchText)}">`,
+			`<summary><span>${escapeHtml(group.title)}</span><span class="meta">${group.badges}</span></summary>`,
+			`<div class="turn-group-items">${children}</div>`,
+			"</details>",
+		].join("\n"));
+	}
+
+	if (!turn.user && turn.between.length === 0) return "";
+	return `<section class="timeline-turn" data-turn="${turn.index}">${blocks.join("\n")}</section>`;
 }
 
 function renderAnalysisPoints(title: string, points: { title: string; description: string; evidence: any[] }[]): string {
@@ -165,10 +268,58 @@ function renderAnalysisPoints(title: string, points: { title: string; descriptio
 	return `<section class="panel"><h3>${escapeHtml(title)}</h3>${items}</section>`;
 }
 
+function renderStatsSection(dataset: RetrospectiveDataset): string {
+	const stats = dataset.stats;
+
+	return [
+		"<section class=\"panel\" style=\"margin-bottom: 14px;\">",
+		"<h2>Session stats</h2>",
+		"<div class=\"stats-groups\" style=\"margin-top: 10px;\">",
+		"<section class=\"stats-group\">",
+		"<h3>Session overview</h3>",
+		"<div class=\"grid\">",
+		`<div class=\"card\"><div class=\"muted\">Duration</div><div class=\"value\">${escapeHtml(formatMs(stats.sessionDurationMs))}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Entries</div><div class=\"value\">${stats.counts.entries}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">User prompts</div><div class=\"value\">${stats.counts.userPrompts}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Assistant messages</div><div class=\"value\">${stats.counts.assistantMessages}</div></div>`,
+		"</div>",
+		"</section>",
+		"<section class=\"stats-group\">",
+		"<h3>Tooling & discovery</h3>",
+		"<div class=\"grid\">",
+		`<div class=\"card\"><div class=\"muted\">Tool calls</div><div class=\"value\">${stats.counts.toolCalls}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Discovery calls</div><div class=\"value\">${stats.discoveryCalls.total}</div><div class=\"muted\">${stats.discoveryCalls.percentOfAllToolCalls}% of all tool calls</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Discovery breakdown</div><div class=\"value\">read ${stats.discoveryCalls.byTool.read} · ls ${stats.discoveryCalls.byTool.ls} · find ${stats.discoveryCalls.byTool.find} · grep ${stats.discoveryCalls.byTool.grep}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Bash calls</div><div class=\"value\">${stats.counts.bashCalls}</div><div class=\"muted\">user ${stats.counts.userBashCalls} · assistant tool ${stats.counts.assistantBashToolCalls}</div></div>`,
+		"</div>",
+		"</section>",
+		"<section class=\"stats-group\">",
+		"<h3>Latency & reliability</h3>",
+		"<div class=\"grid\">",
+		`<div class=\"card\"><div class=\"muted\">Tool wait (sum)</div><div class=\"value\">${escapeHtml(formatMs(stats.toolWaitMsTotal))}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Tool wait (wall)</div><div class=\"value\">${escapeHtml(formatMs(stats.toolWaitMsWallClock))}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Tool latency</div><div class=\"value\">avg ${escapeHtml(formatMs(stats.toolLatencyAvgMs))} · max ${escapeHtml(formatMs(stats.toolLatencyMaxMs))}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Errors</div><div class=\"value\">${stats.counts.errors}</div><div class=\"muted\">tool ${stats.counts.toolErrors} · assistant ${stats.counts.assistantErrors + stats.counts.assistantAborts} · bash non-zero ${stats.counts.bashNonZeroExits}</div></div>`,
+		"</div>",
+		"</section>",
+		"<section class=\"stats-group\">",
+		"<h3>Token usage & cost</h3>",
+		"<div class=\"grid\">",
+		`<div class=\"card\"><div class=\"muted\">Input tokens</div><div class=\"value\">${stats.tokens.input}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Output tokens</div><div class=\"value\">${stats.tokens.output}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Total tokens</div><div class=\"value\">${stats.tokens.total}</div><div class=\"muted\">cache read ${stats.tokens.cacheRead} · cache write ${stats.tokens.cacheWrite}</div></div>`,
+		`<div class=\"card\"><div class=\"muted\">Total cost</div><div class=\"value\">${escapeHtml(formatCurrency(stats.tokens.cost.total))}</div></div>`,
+		"</div>",
+		"</section>",
+		"</div>",
+		"</section>",
+	].join("\n");
+}
+
 export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 	const { dataset, analysis } = report;
-	const stats = dataset.stats;
-	const conversationHtml = dataset.conversation.map((item) => renderConversationItem(item)).join("\n");
+	const turns = buildConversationTurns(dataset.conversation);
+	const conversationHtml = turns.map((turn) => renderTurn(turn)).join("\n");
 	const improvements =
 		analysis.improvements.length > 0
 			? `<ul>${analysis.improvements.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
@@ -206,84 +357,185 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 	<title>${escapeHtml(report.title)}</title>
 	<style>
 		:root {
-			--bg: #0b1020;
-			--panel: #131a2e;
-			--panel-2: #1a2440;
+			--bg: #060b17;
+			--bg-soft: #0e1730;
+			--panel: rgba(19, 29, 54, 0.78);
+			--panel-2: rgba(24, 37, 67, 0.86);
 			--text: #e8ecf5;
-			--muted: #9fb0d1;
-			--accent: #7cb8ff;
+			--muted: #aab7d5;
+			--accent: #79b8ff;
+			--accent-2: #8de7ff;
 			--danger: #ff7b7b;
-			--border: #2a385e;
+			--success: #79f2c0;
+			--border: rgba(129, 161, 214, 0.32);
+			--border-strong: rgba(144, 178, 237, 0.54);
 		}
 		* { box-sizing: border-box; }
 		body {
 			margin: 0;
 			font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-			background: radial-gradient(circle at top, #132041 0%, var(--bg) 45%);
+			background:
+				radial-gradient(1200px 700px at 10% -5%, #1a3169 0%, transparent 55%),
+				radial-gradient(1000px 600px at 95% -10%, #29356a 0%, transparent 52%),
+				linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 45%);
 			color: var(--text);
-			line-height: 1.5;
+			line-height: 1.55;
 		}
-		main { max-width: 1200px; margin: 0 auto; padding: 24px; }
+		main {
+			max-width: 1280px;
+			margin: 0 auto;
+			padding: 28px 22px 48px;
+		}
 		h1, h2, h3, h4 { margin: 0 0 8px; }
+		h1 {
+			font-size: clamp(1.45rem, 2.7vw, 2.2rem);
+			line-height: 1.2;
+			background: linear-gradient(110deg, #dbe9ff 10%, var(--accent) 52%, var(--accent-2) 92%);
+			-webkit-background-clip: text;
+			background-clip: text;
+			color: transparent;
+		}
+		h2 {
+			font-size: 1.2rem;
+			letter-spacing: 0.01em;
+		}
+		h3 {
+			font-size: 0.98rem;
+			text-transform: uppercase;
+			letter-spacing: 0.09em;
+			color: #c8d9ff;
+		}
 		p { margin: 0 0 10px; }
+		ul { margin: 8px 0 0; padding-left: 20px; }
+		li + li { margin-top: 4px; }
 		.muted { color: var(--muted); }
 		.panel {
+			position: relative;
 			background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
 			border: 1px solid var(--border);
-			border-radius: 14px;
-			padding: 16px;
-			box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+			border-radius: 16px;
+			padding: 18px;
+			box-shadow:
+				0 10px 35px rgba(0, 0, 0, 0.34),
+				inset 0 1px 0 rgba(255, 255, 255, 0.06);
+			backdrop-filter: blur(5px);
+		}
+		.panel::after {
+			content: "";
+			position: absolute;
+			inset: 0;
+			border-radius: inherit;
+			pointer-events: none;
+			background: linear-gradient(135deg, rgba(146, 188, 255, 0.05), transparent 40%);
+		}
+		.stats-groups { display: grid; gap: 12px; }
+		.stats-group {
+			padding: 13px;
+			border-radius: 12px;
+			border: 1px dashed rgba(143, 173, 227, 0.36);
+			background: linear-gradient(180deg, rgba(10, 16, 30, 0.7), rgba(8, 13, 25, 0.56));
 		}
 		.grid {
 			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 			gap: 12px;
 		}
 		.card {
-			background: rgba(9, 14, 28, 0.55);
+			position: relative;
+			background: linear-gradient(165deg, rgba(20, 30, 56, 0.85), rgba(11, 18, 34, 0.72));
 			border: 1px solid var(--border);
 			border-radius: 12px;
 			padding: 12px;
+			transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 		}
-		.value { font-size: 1.3rem; font-weight: 700; }
+		.card::before {
+			content: "";
+			position: absolute;
+			left: 10px;
+			right: 10px;
+			top: 0;
+			height: 2px;
+			background: linear-gradient(90deg, transparent, rgba(136, 193, 255, 0.75), transparent);
+			border-radius: 999px;
+		}
+		.card:hover {
+			transform: translateY(-1px);
+			border-color: var(--border-strong);
+			box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+		}
+		.value {
+			font-size: 1.12rem;
+			font-weight: 700;
+			line-height: 1.3;
+		}
 		.badge {
 			display: inline-block;
-			padding: 2px 8px;
+			padding: 2px 9px;
 			border-radius: 999px;
-			background: rgba(124, 184, 255, 0.15);
-			border: 1px solid rgba(124, 184, 255, 0.35);
-			font-size: 0.78rem;
+			background: linear-gradient(180deg, rgba(127, 189, 255, 0.2), rgba(127, 189, 255, 0.09));
+			border: 1px solid rgba(124, 184, 255, 0.42);
+			font-size: 0.76rem;
 			margin-right: 6px;
 			margin-top: 4px;
 		}
 		.badge-error {
-			background: rgba(255, 123, 123, 0.16);
-			border-color: rgba(255, 123, 123, 0.45);
+			background: linear-gradient(180deg, rgba(255, 123, 123, 0.24), rgba(255, 123, 123, 0.11));
+			border-color: rgba(255, 123, 123, 0.52);
+			color: #ffd6d6;
 		}
 		.controls {
 			display: flex;
-			gap: 12px;
+			gap: 10px;
 			flex-wrap: wrap;
 			align-items: center;
+		}
+		.controls label {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 5px 9px;
+			border-radius: 999px;
+			border: 1px solid var(--border);
+			background: rgba(9, 14, 27, 0.7);
+			font-size: 0.85rem;
+			color: var(--muted);
 		}
 		.controls input[type="search"] {
 			flex: 1;
 			min-width: 220px;
-			background: #0a0f1e;
+			background: rgba(6, 10, 20, 0.86);
 			color: var(--text);
 			border: 1px solid var(--border);
-			border-radius: 8px;
-			padding: 8px 10px;
+			border-radius: 10px;
+			padding: 9px 11px;
+			outline: none;
+			transition: border-color 140ms ease, box-shadow 140ms ease;
+		}
+		.controls input[type="search"]:focus {
+			border-color: var(--border-strong);
+			box-shadow: 0 0 0 3px rgba(121, 184, 255, 0.17);
 		}
 		.timeline { display: grid; gap: 12px; margin-top: 14px; }
-		.timeline-item {
+		.timeline-turn {
+			display: grid;
+			gap: 8px;
+			padding-left: 9px;
+			border-left: 2px solid rgba(125, 168, 238, 0.2);
+		}
+		.timeline-item,
+		.turn-group {
 			border: 1px solid var(--border);
 			border-radius: 12px;
-			background: rgba(6, 10, 19, 0.6);
+			background: linear-gradient(175deg, rgba(10, 16, 31, 0.82), rgba(8, 13, 23, 0.67));
 			overflow: hidden;
 		}
+		details > summary { list-style: none; }
+		details > summary::-webkit-details-marker { display: none; }
 		.timeline-item > summary,
-		.timeline-item > header {
+		.timeline-item > header,
+		.turn-group > summary,
+		.nested-expand > summary {
+			position: relative;
 			padding: 12px;
 			display: flex;
 			align-items: center;
@@ -291,39 +543,92 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 			gap: 12px;
 			cursor: pointer;
 		}
-		.timeline-item.user { border-left: 4px solid #7cf0ce; }
-		.timeline-item.assistant { border-left: 4px solid #7cb8ff; }
+		.timeline-item > summary::before,
+		.turn-group > summary::before,
+		.nested-expand > summary::before {
+			content: "▸";
+			margin-right: 8px;
+			font-size: 0.8rem;
+			color: #9ec6ff;
+			transition: transform 120ms ease;
+		}
+		.timeline-item[open] > summary::before,
+		.turn-group[open] > summary::before,
+		.nested-expand[open] > summary::before {
+			transform: rotate(90deg);
+		}
+		.timeline-item > summary > span:first-child,
+		.turn-group > summary > span:first-child {
+			display: inline-flex;
+			align-items: center;
+			font-weight: 600;
+		}
+		.meta {
+			text-align: right;
+			max-width: 62%;
+		}
+		.timeline-item.user {
+			border-left: 4px solid var(--success);
+			background: linear-gradient(170deg, rgba(18, 45, 44, 0.44), rgba(10, 18, 20, 0.62));
+		}
+		.timeline-item.assistant { border-left: 4px solid var(--accent); }
 		.timeline-item.toolResult { border-left: 4px solid #d2a8ff; }
 		.timeline-item.bashExecution { border-left: 4px solid #ffe08a; }
+		.turn-group {
+			border-left: 4px solid #98b1ff;
+			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+		}
+		.turn-group-items {
+			display: grid;
+			gap: 8px;
+			padding: 8px;
+			border-top: 1px solid var(--border);
+			background: rgba(7, 12, 22, 0.72);
+		}
 		.content-block {
 			margin: 0;
 			padding: 12px;
 			white-space: pre-wrap;
 			font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 			font-size: 0.88rem;
-			border-top: 1px solid var(--border);
-			background: rgba(4, 8, 16, 0.68);
+			border-top: 1px solid rgba(123, 157, 214, 0.25);
+			background: linear-gradient(180deg, rgba(6, 10, 18, 0.84), rgba(4, 8, 14, 0.78));
 		}
 		.nested-expand {
-			border-top: 1px dashed var(--border);
+			border-top: 1px dashed rgba(132, 165, 222, 0.25);
 		}
 		.nested-expand > summary {
 			padding: 10px 12px;
-			cursor: pointer;
 			color: var(--muted);
+			font-size: 0.9rem;
 		}
 		.analysis-columns {
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 			gap: 12px;
 		}
+		.analysis-item {
+			padding: 10px;
+			border-radius: 10px;
+			border: 1px solid rgba(129, 161, 214, 0.22);
+			background: rgba(8, 13, 25, 0.62);
+		}
 		.analysis-item + .analysis-item {
 			margin-top: 10px;
-			padding-top: 10px;
-			border-top: 1px dashed var(--border);
 		}
-		.evidence { font-size: 0.8rem; }
+		.evidence {
+			font-size: 0.8rem;
+			line-height: 1.45;
+			padding-top: 4px;
+		}
 		.hidden { display: none !important; }
+		@media (max-width: 900px) {
+			main { padding: 20px 14px 36px; }
+			.meta { max-width: 100%; }
+			.timeline-item > summary,
+			.timeline-item > header,
+			.turn-group > summary { flex-direction: column; align-items: flex-start; }
+		}
 	</style>
 </head>
 <body>
@@ -334,21 +639,7 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 			<p class="muted">Range: ${escapeHtml(timestampLabel(dataset.startTimestampIso))} → ${escapeHtml(timestampLabel(dataset.endTimestampIso))}</p>
 		</section>
 
-		<section class="panel" style="margin-bottom: 14px;">
-			<h2>Session stats</h2>
-			<div class="grid" style="margin-top: 10px;">
-				<div class="card"><div class="muted">Duration</div><div class="value">${escapeHtml(formatMs(stats.sessionDurationMs))}</div></div>
-				<div class="card"><div class="muted">Tool calls</div><div class="value">${stats.counts.toolCalls}</div></div>
-				<div class="card"><div class="muted">Discovery calls</div><div class="value">${stats.discoveryCalls.total} (${stats.discoveryCalls.percentOfAllToolCalls}%)</div></div>
-				<div class="card"><div class="muted">Errors</div><div class="value">${stats.counts.errors}</div></div>
-				<div class="card"><div class="muted">Tool wait (sum)</div><div class="value">${escapeHtml(formatMs(stats.toolWaitMsTotal))}</div></div>
-				<div class="card"><div class="muted">Tool wait (wall)</div><div class="value">${escapeHtml(formatMs(stats.toolWaitMsWallClock))}</div></div>
-				<div class="card"><div class="muted">Output tokens</div><div class="value">${stats.tokens.output}</div></div>
-				<div class="card"><div class="muted">Total tokens</div><div class="value">${stats.tokens.total}</div></div>
-				<div class="card"><div class="muted">Cost</div><div class="value">${escapeHtml(formatCurrency(stats.tokens.cost.total))}</div></div>
-				<div class="card"><div class="muted">Bash calls</div><div class="value">${stats.counts.bashCalls}</div><div class="muted">user ${stats.counts.userBashCalls} · assistant tool ${stats.counts.assistantBashToolCalls}</div></div>
-			</div>
-		</section>
+		${renderStatsSection(dataset)}
 
 		<section class="panel" style="margin-bottom: 14px;">
 			<h2>Analysis</h2>
@@ -367,6 +658,7 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 
 		<section class="panel">
 			<h2>Conversation timeline</h2>
+			<p class="muted">Everything between user prompts is grouped into one collapsible activity block.</p>
 			<div class="controls" style="margin-top: 10px;">
 				<input id="search" type="search" placeholder="Search timeline..." />
 				<label><input id="toggle-tools" type="checkbox" checked /> tool results</label>
@@ -382,19 +674,51 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 			const tools = document.getElementById('toggle-tools');
 			const bash = document.getElementById('toggle-bash');
 			const custom = document.getElementById('toggle-custom');
-			const items = Array.from(document.querySelectorAll('.timeline-item'));
+			const turns = Array.from(document.querySelectorAll('.timeline-turn'));
 
 			const update = () => {
 				const q = (search.value || '').toLowerCase().trim();
-				for (const item of items) {
-					const kind = item.dataset.kind || '';
-					const hay = item.dataset.search || '';
-					let visible = true;
-					if (kind === 'toolResult' && !tools.checked) visible = false;
-					if (kind === 'bashExecution' && !bash.checked) visible = false;
-					if (kind === 'custom' && !custom.checked) visible = false;
-					if (visible && q && !hay.includes(q)) visible = false;
-					item.classList.toggle('hidden', !visible);
+
+				for (const turn of turns) {
+					const user = turn.querySelector('.timeline-entry[data-kind="user"]');
+					const group = turn.querySelector('.turn-group');
+					const entries = Array.from(turn.querySelectorAll('.turn-group .timeline-entry'));
+
+					let hasVisibleEntry = false;
+					let hasSearchVisibleEntry = false;
+
+					for (const entry of entries) {
+						const kind = entry.dataset.kind || '';
+						const hay = entry.dataset.search || '';
+
+						let visibleByKind = true;
+						if (kind === 'toolResult' && !tools.checked) visibleByKind = false;
+						if (kind === 'bashExecution' && !bash.checked) visibleByKind = false;
+						if (kind === 'custom' && !custom.checked) visibleByKind = false;
+
+						const searchMatch = !q || hay.includes(q);
+						const visible = visibleByKind && searchMatch;
+						entry.classList.toggle('hidden', !visible);
+
+						if (visible) {
+							hasVisibleEntry = true;
+							if (searchMatch) hasSearchVisibleEntry = true;
+						}
+					}
+
+					if (group) {
+						group.classList.toggle('hidden', !hasVisibleEntry);
+					}
+
+					const userHay = user ? (user.dataset.search || '') : '';
+					const userMatch = user ? (!q || userHay.includes(q)) : false;
+					if (user) {
+						const showUser = q ? (userMatch || hasVisibleEntry) : true;
+						user.classList.toggle('hidden', !showUser);
+					}
+
+					const showTurn = q ? (userMatch || hasSearchVisibleEntry) : Boolean(user || hasVisibleEntry);
+					turn.classList.toggle('hidden', !showTurn);
 				}
 			};
 
