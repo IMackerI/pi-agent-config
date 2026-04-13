@@ -91,7 +91,6 @@ export function buildHeuristicAnalysis(dataset: RetrospectiveDataset): Retrospec
 	const incorrectDecisions: AnalysisPoint[] = [];
 	const unnecessaryEffort: AnalysisPoint[] = [];
 	const unexpectedFindings: AnalysisPoint[] = [];
-	const improvements: string[] = [];
 	const doDifferentlyAgain: string[] = [];
 
 	for (const item of dataset.conversation) {
@@ -167,21 +166,16 @@ export function buildHeuristicAnalysis(dataset: RetrospectiveDataset): Retrospec
 	}
 
 	if (dataset.stats.counts.toolErrors > 0) {
-		improvements.push("Before running brittle commands, do one fast sanity check for shell, cwd, or path assumptions.");
 		doDifferentlyAgain.push(
 			"I would spend the first minute reducing uncertainty instead of improvising inside it. A single explicit sanity check for shell behavior, current directory, or expected files would likely prevent a whole mini-loop of correction later.",
 		);
 	}
 	if (repeatedDiscovery.length > 0) {
-		improvements.push("After 1-2 discovery loops, write a short local summary instead of repeating the same read/search pattern.");
 		doDifferentlyAgain.push(
 			"Once the basic shape of the problem is visible, both of us should switch from more searching to a short shared summary and then execution. That keeps momentum high and stops the work from dissolving into another discovery lap.",
 		);
 	}
 	if (dataset.stats.toolWaitMsTotal > 0 && dataset.stats.counts.toolCalls > 0) {
-		improvements.push(
-			`Tool waiting time totalled ${(dataset.stats.toolWaitMsTotal / 1000).toFixed(1)}s; independent lookups should be batched earlier.`,
-		);
 		doDifferentlyAgain.push(
 			"I would organize the work in bigger chunks: gather the minimum facts, commit to an approach, and only then widen the search if something genuinely blocks us. The report should feel like a clear narrative, not a replay of every little probe.",
 		);
@@ -204,7 +198,7 @@ export function buildHeuristicAnalysis(dataset: RetrospectiveDataset): Retrospec
 		incorrectDecisions,
 		unnecessaryEffort,
 		unexpectedFindings,
-		improvements,
+		improvements: [],
 		doDifferentlyAgain: [...new Set(doDifferentlyAgain)],
 	};
 }
@@ -363,8 +357,7 @@ export function parseAgentNotes(rawText: string): AgentNotes | null {
 }
 
 export function mergeAnalysisWithAgentNotes(base: RetrospectiveAnalysis, notes: AgentNotes): RetrospectiveAnalysis {
-	const mergedImprovements = [...base.improvements, ...notes.improvements];
-	const dedupedImprovements = [...new Set(mergedImprovements.map((value) => value.trim()).filter(Boolean))];
+	const dedupedImprovements = [...new Set(notes.improvements.map((value) => value.trim()).filter(Boolean))];
 	const mergedRedo = notes.doDifferentlyAgain.length > 0 ? notes.doDifferentlyAgain : base.doDifferentlyAgain;
 	const dedupedRedo = [...new Set(mergedRedo.map((value) => value.trim()).filter(Boolean))];
 
