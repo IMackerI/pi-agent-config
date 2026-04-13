@@ -1,4 +1,5 @@
-import { convertToLlm, serializeConversation } from "@mariozechner/pi-coding-agent";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AssistantMessage, ToolCall, ToolResultMessage, UserMessage } from "@mariozechner/pi-ai";
 import type { RetrospectiveDataset, ToolCallRecord } from "./core";
 
 export interface AnalysisEvidence {
@@ -20,6 +21,7 @@ export interface AgentNotes {
 	unnecessaryEffort: string[];
 	unexpectedFindings: string[];
 	improvements: string[];
+	doDifferentlyAgain: string[];
 }
 
 export interface RetrospectiveAnalysis {
@@ -29,6 +31,8 @@ export interface RetrospectiveAnalysis {
 	unnecessaryEffort: AnalysisPoint[];
 	unexpectedFindings: AnalysisPoint[];
 	improvements: string[];
+	doDifferentlyAgain: string[];
+	modeNote?: string;
 	agentNotes?: AgentNotes;
 }
 
@@ -88,6 +92,7 @@ export function buildHeuristicAnalysis(dataset: RetrospectiveDataset): Retrospec
 	const unnecessaryEffort: AnalysisPoint[] = [];
 	const unexpectedFindings: AnalysisPoint[] = [];
 	const improvements: string[] = [];
+	const doDifferentlyAgain: string[] = [];
 
 	for (const item of dataset.conversation) {
 		if (item.kind === "toolResult") {
@@ -162,83 +167,213 @@ export function buildHeuristicAnalysis(dataset: RetrospectiveDataset): Retrospec
 	}
 
 	if (dataset.stats.counts.toolErrors > 0) {
-		improvements.push("Before running potentially brittle commands, verify path/shell assumptions with one quick check command.");
+		improvements.push("Before running brittle commands, do one fast sanity check for shell, cwd, or path assumptions.");
+		doDifferentlyAgain.push(
+			"I would spend the first minute reducing uncertainty instead of improvising inside it. A single explicit sanity check for shell behavior, current directory, or expected files would likely prevent a whole mini-loop of correction later.",
+		);
 	}
 	if (repeatedDiscovery.length > 0) {
-		improvements.push("After 1-2 discovery loops, write a short local summary to avoid repeating the same read/search calls.");
+		improvements.push("After 1-2 discovery loops, write a short local summary instead of repeating the same read/search pattern.");
+		doDifferentlyAgain.push(
+			"Once the basic shape of the problem is visible, both of us should switch from more searching to a short shared summary and then execution. That keeps momentum high and stops the work from dissolving into another discovery lap.",
+		);
 	}
 	if (dataset.stats.toolWaitMsTotal > 0 && dataset.stats.counts.toolCalls > 0) {
 		improvements.push(
-			`Tool waiting time totalled ${(dataset.stats.toolWaitMsTotal / 1000).toFixed(1)}s; batch independent lookups where possible.`,
+			`Tool waiting time totalled ${(dataset.stats.toolWaitMsTotal / 1000).toFixed(1)}s; independent lookups should be batched earlier.`,
+		);
+		doDifferentlyAgain.push(
+			"I would organize the work in bigger chunks: gather the minimum facts, commit to an approach, and only then widen the search if something genuinely blocks us. The report should feel like a clear narrative, not a replay of every little probe.",
+		);
+	}
+	if (doDifferentlyAgain.length === 0) {
+		doDifferentlyAgain.push(
+			"Even in a smoother session, I would still aim to externalize the plan earlier, keep a running summary of what we already learned, and make the transition from exploration to implementation more deliberate. That usually leads to a calmer session and a more readable retrospective.",
 		);
 	}
 
 	const summaryParts = [
-		`${incorrectDecisions.length} likely incorrect decisions`,
-		`${unnecessaryEffort.length} unnecessary-effort pattern(s)`,
-		`${unexpectedFindings.length} unexpected event(s)`,
+		`${incorrectDecisions.length} wrong-turn signal${incorrectDecisions.length === 1 ? "" : "s"}`,
+		`${unnecessaryEffort.length} place${unnecessaryEffort.length === 1 ? "" : "s"} where time probably leaked`,
+		`${unexpectedFindings.length} unexpected moment${unexpectedFindings.length === 1 ? "" : "s"}`,
 	].join(" · ");
 
 	return {
 		generatedBy: "heuristic",
-		summary: `Heuristic analysis: ${summaryParts}.`,
+		summary: `This pass is based on heuristics rather than memory notes. It looks like there were ${summaryParts}. Read it as a thoughtful first draft: useful for spotting patterns, but not the final word on what mattered most.`,
 		incorrectDecisions,
 		unnecessaryEffort,
 		unexpectedFindings,
 		improvements,
+		doDifferentlyAgain: [...new Set(doDifferentlyAgain)],
 	};
 }
 
-export function buildAgentNotesInput(dataset: RetrospectiveDataset, maxChars = 24000): string {
-	const llmMessages = convertToLlm(dataset.messagesSinceLastCompaction);
-	const serialized = serializeConversation(llmMessages);
-	if (serialized.length <= maxChars) return serialized;
-	const tail = serialized.slice(serialized.length - maxChars);
-	return `[...truncated to last ${maxChars} chars...]\n${tail}`;
+function shorten(text: string, maxChars: number): string {
+	const trimmed = text.replace(/\r\n/g, "\n").trim();
+	if (!trimmed) return "";
+	if (trimmed.length <= maxChars) return trimmed;
+	return `${trimmed.slice(0, Math.max(0, maxChars - 18)).trimEnd()}\n[…truncated]`;
 }
 
-function toStringArray(value: unknown): string[] {
-	if (!Array.isArray(value)) return [];
+function contentText(content: unknown): string {
+	if (typeof content === "string") return content.trim();
+	if (!Array.isArray(content)) return "";
+
+	const parts: string[] = [];
+	for (const block of content as Array<{ type?: string; text?: string; thinking?: string }>) {
+		if (!block || typeof block !== "object") continue;
+		if (block.type === "text" && typeof block.text === "string" && block.text.trim()) parts.push(block.text.trim());
+	}
+	return parts.join("\n\n").trim();
+}
+
+function toolCallSummary(toolCalls: ToolCall[]): string {
+	if (toolCalls.length === 0) return "";
+	return toolCalls
+		.slice(0, 6)
+		.map((call) => {
+			const args = Object.entries(call.arguments ?? {})
+				.slice(0, 3)
+				.map(([key, value]) => `${key}=${typeof value === "string" ? JSON.stringify(shorten(value, 120)) : JSON.stringify(value)}`)
+				.join(", ");
+			return args ? `${call.name}(${args})` : `${call.name}()`;
+		})
+		.join("; ");
+}
+
+function isAssistantMessage(message: AgentMessage): message is AssistantMessage {
+	return typeof message === "object" && message !== null && (message as { role?: string }).role === "assistant";
+}
+
+function isUserMessage(message: AgentMessage): message is UserMessage {
+	return typeof message === "object" && message !== null && (message as { role?: string }).role === "user";
+}
+
+function isToolResultMessage(message: AgentMessage): message is ToolResultMessage {
+	return typeof message === "object" && message !== null && (message as { role?: string }).role === "toolResult";
+}
+
+export function buildAgentNotesInput(dataset: RetrospectiveDataset, maxChars = 16000): string {
+	const lines: string[] = [];
+
+	for (const message of dataset.messagesSinceLastCompaction) {
+		if (isUserMessage(message)) {
+			const text = shorten(contentText(message.content), 1400);
+			if (text) lines.push(`<user>\n${text}\n</user>`);
+			continue;
+		}
+
+		if (isAssistantMessage(message)) {
+			const text = shorten(contentText(message.content), 1800);
+			const calls = toolCallSummary(message.content.filter((block): block is ToolCall => block.type === "toolCall"));
+			const body = [text, calls ? `Tool calls: ${calls}` : ""].filter(Boolean).join("\n\n");
+			if (body) lines.push(`<assistant>\n${body}\n</assistant>`);
+			continue;
+		}
+
+		if (isToolResultMessage(message)) {
+			const toolName = message.toolName || "tool";
+			const text = shorten(contentText(message.content), message.isError ? 1000 : 260);
+			if (message.isError) {
+				lines.push(`<tool_result tool="${toolName}" error="true">\n${text || "Tool returned an error without text."}\n</tool_result>`);
+				continue;
+			}
+			if (toolName === "write" || toolName === "edit") {
+				lines.push(`<tool_result tool="${toolName}">Updated project files successfully.</tool_result>`);
+				continue;
+			}
+			if (["read", "ls", "find", "grep", "glob"].includes(toolName)) {
+				lines.push(`<tool_result tool="${toolName}">Discovery result captured.</tool_result>`);
+				continue;
+			}
+			if (text) lines.push(`<tool_result tool="${toolName}">\n${text}\n</tool_result>`);
+			continue;
+		}
+	}
+
+	let serialized = lines.join("\n\n").trim();
+	if (!serialized) return "";
+	if (serialized.length <= maxChars) return serialized;
+	serialized = serialized.slice(serialized.length - maxChars);
+	return `[...truncated to last ${maxChars} chars of condensed conversation...]\n${serialized}`;
+}
+
+function parseTaggedListBlock(value: string): string[] {
 	return value
-		.filter((item): item is string => typeof item === "string")
-		.map((item) => item.trim())
+		.split(/\n+/)
+		.map((line) => line.replace(/^[-*•]\s*/, "").trim())
 		.filter(Boolean);
+}
+
+function extractRetrospectiveXml(rawText: string): string {
+	const match = rawText.match(/<retrospective>[\s\S]*?<\/retrospective>/i);
+	return match?.[0]?.trim() ?? rawText.trim();
+}
+
+function parseXmlSection(rawText: string, tag: string): string {
+	const escaped = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const regex = new RegExp(`<${escaped}>([\\s\\S]*?)<\\/${escaped}>`, "i");
+	const match = rawText.match(regex);
+	return match?.[1]?.trim() ?? "";
+}
+
+function normalizeList(items: string[]): string[] {
+	return items
+		.map((item) => item.replace(/^\d+[.)]\s*/, "").trim())
+		.filter((item) => item && !/^none\b/i.test(item));
+}
+
+export function isAgentNotesUseful(notes: AgentNotes | null): notes is AgentNotes {
+	if (!notes) return false;
+	const hasSummary = !!notes.summary.trim() && notes.summary.trim() !== "Generated notes from conversation since last compaction.";
+	const hasProjectfulContent =
+		notes.doDifferentlyAgain.length > 0 ||
+		notes.improvements.length > 0 ||
+		notes.incorrectDecisions.length > 0 ||
+		notes.unnecessaryEffort.length > 0 ||
+		notes.unexpectedFindings.length > 0;
+	return hasSummary && hasProjectfulContent;
 }
 
 export function parseAgentNotes(rawText: string): AgentNotes | null {
 	const trimmed = rawText.trim();
 	if (!trimmed) return null;
 
-	const start = trimmed.indexOf("{");
-	const end = trimmed.lastIndexOf("}");
-	if (start === -1 || end === -1 || end <= start) return null;
+	const xml = extractRetrospectiveXml(trimmed);
+	const summary = parseXmlSection(xml, "summary");
+	const incorrectDecisions = normalizeList(parseTaggedListBlock(parseXmlSection(xml, "incorrect_decisions")));
+	const unnecessaryEffort = normalizeList(parseTaggedListBlock(parseXmlSection(xml, "unnecessary_effort")));
+	const unexpectedFindings = normalizeList(parseTaggedListBlock(parseXmlSection(xml, "unexpected_findings")));
+	const improvements = normalizeList(parseTaggedListBlock(parseXmlSection(xml, "improvements")));
+	const doDifferentlyAgain = normalizeList(parseTaggedListBlock(parseXmlSection(xml, "do_differently_again")));
 
-	try {
-		const parsed = JSON.parse(trimmed.slice(start, end + 1)) as Record<string, unknown>;
-		return {
-			summary:
-				typeof parsed.summary === "string"
-					? parsed.summary.trim()
-					: "Generated notes from conversation since last compaction.",
-			incorrectDecisions: toStringArray(parsed.incorrectDecisions),
-			unnecessaryEffort: toStringArray(parsed.unnecessaryEffort),
-			unexpectedFindings: toStringArray(parsed.unexpectedFindings),
-			improvements: toStringArray(parsed.improvements),
-		};
-	} catch {
+	if (!summary && incorrectDecisions.length === 0 && unnecessaryEffort.length === 0 && unexpectedFindings.length === 0 && improvements.length === 0 && doDifferentlyAgain.length === 0) {
 		return null;
 	}
+
+	return {
+		summary,
+		incorrectDecisions,
+		unnecessaryEffort,
+		unexpectedFindings,
+		improvements,
+		doDifferentlyAgain,
+	};
 }
 
 export function mergeAnalysisWithAgentNotes(base: RetrospectiveAnalysis, notes: AgentNotes): RetrospectiveAnalysis {
 	const mergedImprovements = [...base.improvements, ...notes.improvements];
 	const dedupedImprovements = [...new Set(mergedImprovements.map((value) => value.trim()).filter(Boolean))];
+	const mergedRedo = notes.doDifferentlyAgain.length > 0 ? notes.doDifferentlyAgain : base.doDifferentlyAgain;
+	const dedupedRedo = [...new Set(mergedRedo.map((value) => value.trim()).filter(Boolean))];
 
 	return {
 		...base,
 		generatedBy: "heuristic+notes",
-		summary: `${base.summary}\n\nAgent notes: ${notes.summary}`,
+		summary: base.summary,
 		agentNotes: notes,
 		improvements: dedupedImprovements,
+		doDifferentlyAgain: dedupedRedo,
 	};
 }
