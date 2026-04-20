@@ -251,6 +251,10 @@ function isToolResultMessage(message: AgentMessage): message is ToolResultMessag
 export function buildAgentNotesInput(dataset: RetrospectiveDataset, maxChars = 16000): string {
 	const lines: string[] = [];
 
+	if (dataset.lastCompactionSummary?.trim()) {
+		lines.push(`<conversation_summary_before_recent_messages>\n${shorten(dataset.lastCompactionSummary, 5000)}\n</conversation_summary_before_recent_messages>`);
+	}
+
 	for (const message of dataset.messagesSinceLastCompaction) {
 		if (isUserMessage(message)) {
 			const text = shorten(contentText(message.content), 1400);

@@ -123,7 +123,9 @@ async function maybeGenerateAgentNotes(
 	if (!conversationExcerpt.trim()) return { notes: null, reason: `${modelLabel}: no post-compaction conversation excerpt available` };
 
 	const prompt = [
-		"Here is the conversation excerpt to analyze:",
+		"Here is the conversation context to analyze.",
+		"It may include a compacted summary of earlier work followed by the recent detailed messages.",
+		"Use both so the retrospective reflects the whole conversation arc that is still available in context.",
 		"<conversation>",
 		conversationExcerpt,
 		"</conversation>",
