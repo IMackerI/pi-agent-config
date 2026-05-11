@@ -4,11 +4,22 @@ Personal Pi package containing extensions, skills, and prompts.
 
 Pi is itself very unopinionated, so I made some opinioneated tools for myself. I try to keep the minimalizm of Pi. The idea is to not add too much to context as it mostly confuses the agent.
 
-Still most of them are vibe coded and not as tuned as I would like, use with caution.
+Still most of them are vibe coded and not as tuned as I would like, use with caution. 
 
 ## Setup
 
+### Prefered:
+
+Don't setup. 
+
+Use repositories like this to find tools you like. Don't use only this, there are many out there.
+Tell pi to summarize them and talk to it about what you like.
+Use them just for inspiration or let pi copy and customize them for you.
+
+---
+
 ### Install from GitHub:
+(Actually I haven't tested this, but it should work in theory.)
 ```bash
 pi install git:github.com/IMackerI/pi-agent-config
 pi install git:github.com/IMackerI/pi-agent-config@v0.1.0
@@ -22,40 +33,6 @@ The AGENTS.md is made specific to my workflow. Be sure to tell pi to update the 
 ```bash
 pi config
 ```
-
-### If you want the Brave Search tool:
-```bash
-export BRAVE_SEARCH_API_KEY="your-key"
-```
-
-### Bigger changes
-If you want to change how the tools operate, just tell pi to make a branch of the package and edit the code directly.
-
-## Two-tool architecture
-
-This config now intentionally splits browsing into two specialized paths.
-Backward compatibility with the old all-in-one CDP workflow is **not** guaranteed:
-
-
-1. **Local website debugging (CDP)**
-   - Extension: `extensions/cdp-browser.ts`
-   - Purpose: debug local apps (`localhost`, `127.0.0.1`, LAN/private dev hosts)
-   - Guardrails: local URLs/endpoints by default, explicit override for non-local targets
-
-2. **Internet web search (Brave Search API)**
-   - Extension: `extensions/brave-search.ts`
-   - Tool: `brave_web_search`
-   - Purpose: docs/fact/research search without browser automation
-
-## Required environment
-
-For Brave search tool:
-
-```bash
-export BRAVE_SEARCH_API_KEY="your-key"
-```
-Get key: https://api.search.brave.com
-
 
 ## Contents
 
@@ -74,6 +51,29 @@ Get key: https://api.search.brave.com
 - `prompts/`
   - `ask.md`
   - `html-summarize.md`
+
+
+### If you want the Brave Search tool:
+```bash
+export BRAVE_SEARCH_API_KEY="your-key"
+```
+Get key: https://api.search.brave.com
+
+## Two-tool architecture
+
+This config now intentionally splits browsing into two specialized paths.
+Backward compatibility with the old all-in-one CDP workflow is **not** guaranteed:
+
+1. **Local website debugging (CDP)**
+   - Extension: `extensions/cdp-browser.ts`
+   - Purpose: debug local apps (`localhost`, `127.0.0.1`, LAN/private dev hosts)
+   - Guardrails: local URLs/endpoints by default, explicit override for non-local targets
+
+2. **Internet web search (Brave Search API)**
+   - Extension: `extensions/brave-search.ts`
+   - Tool: `brave_web_search`
+   - Purpose: docs/fact/research search without browser automation
+
 
 ## Retrospective report
 

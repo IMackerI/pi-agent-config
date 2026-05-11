@@ -98,6 +98,7 @@ export interface RetrospectiveDataset {
 	startTimestampIso: string;
 	endTimestampIso: string;
 	lastCompactionEntryId?: string;
+	lastCompactionSummary?: string;
 }
 
 function toIso(ts: number): string {
@@ -287,12 +288,14 @@ export function buildRetrospectiveDataset(
 	let startTimestampMs = Number.POSITIVE_INFINITY;
 	let endTimestampMs = 0;
 	let lastCompactionEntryId: string | undefined;
+	let lastCompactionSummary: string | undefined;
 	let lastCompactionIndex = -1;
 
 	for (let i = 0; i < entries.length; i++) {
 		const entry = entries[i];
 		if (entry.type === "compaction") {
 			lastCompactionEntryId = entry.id;
+			lastCompactionSummary = entry.summary;
 			lastCompactionIndex = i;
 		}
 
@@ -525,5 +528,6 @@ export function buildRetrospectiveDataset(
 		startTimestampIso,
 		endTimestampIso,
 		lastCompactionEntryId,
+		lastCompactionSummary,
 	};
 }

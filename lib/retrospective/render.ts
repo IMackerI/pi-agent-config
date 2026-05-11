@@ -210,7 +210,7 @@ function summarizeTurnGroup(items: ConversationItem[]): {
 		}
 	}
 
-	const title = `Assistant activity until next user message (${items.length} item${items.length === 1 ? "" : "s"})`;
+	const title = `Everything that happened after this message (${items.length} item${items.length === 1 ? "" : "s"})`;
 	const badges: string[] = [];
 	if (assistantCount > 0) badges.push(`<span class="badge">assistant ${assistantCount}</span>`);
 	if (toolResultCount > 0) badges.push(`<span class="badge">tool results ${toolResultCount}</span>`);
@@ -245,6 +245,13 @@ function renderTurn(turn: ConversationTurn): string {
 	return `<section class="timeline-turn" data-turn="${turn.index}">${blocks.join("\n")}</section>`;
 }
 
+function renderIdeaBlocks(items: string[], emptyText: string): string {
+	if (items.length === 0) return `<p class="muted">${escapeHtml(emptyText)}</p>`;
+	return items
+		.map((item) => `<article class="idea-block"><p>${escapeHtml(item)}</p></article>`)
+		.join("");
+}
+
 function renderAnalysisPoints(title: string, points: { title: string; description: string; evidence: any[] }[]): string {
 	if (points.length === 0) {
 		return `<section class="panel"><h3>${escapeHtml(title)}</h3><p class="muted">No items detected.</p></section>`;
@@ -266,6 +273,16 @@ function renderAnalysisPoints(title: string, points: { title: string; descriptio
 		.join("\n");
 
 	return `<section class="panel"><h3>${escapeHtml(title)}</h3>${items}</section>`;
+}
+
+function renderNotePointCards(title: string, items: string[]): string {
+	if (items.length === 0) {
+		return `<section class="panel"><h3>${escapeHtml(title)}</h3><p class="muted">No note items captured.</p></section>`;
+	}
+
+	return `<section class="panel"><h3>${escapeHtml(title)}</h3>${items
+		.map((item) => `<article class="analysis-item"><p>${escapeHtml(item)}</p></article>`)
+		.join("\n")}</section>`;
 }
 
 function renderStatsSection(dataset: RetrospectiveDataset): string {
@@ -319,35 +336,25 @@ function renderStatsSection(dataset: RetrospectiveDataset): string {
 export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 	const { dataset, analysis } = report;
 	const turns = buildConversationTurns(dataset.conversation);
-	const conversationHtml = turns.map((turn) => renderTurn(turn)).join("\n");
+	const conversationHtml = [...turns].reverse().map((turn) => renderTurn(turn)).join("\n");
 	const improvements =
 		analysis.improvements.length > 0
 			? `<ul>${analysis.improvements.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
 			: '<p class="muted">No improvement recommendations generated.</p>';
+	const doDifferentlyAgain = renderIdeaBlocks(
+		analysis.doDifferentlyAgain,
+		"No bigger-picture redo notes generated yet.",
+	);
 
-	const notesSection =
-		analysis.agentNotes &&
-		[
-			"<section class=\"panel\">",
-			"<h3>Agent notes (since last compaction)</h3>",
-			`<p>${escapeHtml(analysis.agentNotes.summary)}</p>`,
-			analysis.agentNotes.incorrectDecisions.length
-				? `<h4>Remembered wrong decisions</h4><ul>${analysis.agentNotes.incorrectDecisions
-						.map((item) => `<li>${escapeHtml(item)}</li>`)
-						.join("")}</ul>`
-				: "",
-			analysis.agentNotes.unnecessaryEffort.length
-				? `<h4>Unnecessary effort</h4><ul>${analysis.agentNotes.unnecessaryEffort
-						.map((item) => `<li>${escapeHtml(item)}</li>`)
-						.join("")}</ul>`
-				: "",
-			analysis.agentNotes.unexpectedFindings.length
-				? `<h4>Unexpected findings</h4><ul>${analysis.agentNotes.unexpectedFindings
-						.map((item) => `<li>${escapeHtml(item)}</li>`)
-						.join("")}</ul>`
-				: "",
-			"</section>",
-		].join("\n");
+	const hasRenderableNotes =
+		!!analysis.agentNotes &&
+		(
+			!!analysis.agentNotes.summary ||
+			analysis.agentNotes.incorrectDecisions.length > 0 ||
+			analysis.agentNotes.unnecessaryEffort.length > 0 ||
+			analysis.agentNotes.unexpectedFindings.length > 0 ||
+			analysis.agentNotes.improvements.length > 0
+		);
 
 	return `<!doctype html>
 <html lang="en">
@@ -357,84 +364,124 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 	<title>${escapeHtml(report.title)}</title>
 	<style>
 		:root {
-			--bg: #060b17;
-			--bg-soft: #0e1730;
-			--panel: rgba(19, 29, 54, 0.78);
-			--panel-2: rgba(24, 37, 67, 0.86);
-			--text: #e8ecf5;
-			--muted: #aab7d5;
-			--accent: #79b8ff;
-			--accent-2: #8de7ff;
-			--danger: #ff7b7b;
-			--success: #79f2c0;
-			--border: rgba(129, 161, 214, 0.32);
-			--border-strong: rgba(144, 178, 237, 0.54);
+			--bg: #fbf6ee;
+			--bg-soft: #fffdf8;
+			--ink: #1f2533;
+			--muted: #5d6475;
+			--accent: #49b6e5;
+			--accent-2: #ffd166;
+			--accent-3: #ff8fab;
+			--success: #16a34a;
+			--danger: #dc2626;
+			--surface: #fffef9;
+			--surface-2: #fff8e8;
+			--border: #263d5b;
 		}
 		* { box-sizing: border-box; }
 		body {
 			margin: 0;
-			font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+			font-family: "Trebuchet MS", "Comic Sans MS", "Segoe Print", system-ui, sans-serif;
 			background:
-				radial-gradient(1200px 700px at 10% -5%, #1a3169 0%, transparent 55%),
-				radial-gradient(1000px 600px at 95% -10%, #29356a 0%, transparent 52%),
-				linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 45%);
-			color: var(--text);
-			line-height: 1.55;
+				radial-gradient(circle at 10% 0%, rgba(73, 182, 229, 0.22), transparent 26%),
+				radial-gradient(circle at 92% 8%, rgba(255, 209, 102, 0.24), transparent 24%),
+				linear-gradient(180deg, var(--bg-soft) 0%, var(--bg) 100%);
+			color: var(--ink);
+			line-height: 1.6;
+		}
+		body::before,
+		body::after {
+			content: "";
+			position: fixed;
+			pointer-events: none;
+			z-index: 0;
+			border: 3px dashed rgba(38, 61, 91, 0.09);
+			border-radius: 26px;
+		}
+		body::before {
+			width: 120px;
+			height: 70px;
+			top: 28px;
+			left: 22px;
+			transform: rotate(-7deg);
+		}
+		body::after {
+			width: 100px;
+			height: 100px;
+			bottom: 24px;
+			right: 30px;
+			transform: rotate(12deg);
 		}
 		main {
-			max-width: 1280px;
+			position: relative;
+			z-index: 1;
+			max-width: 1240px;
 			margin: 0 auto;
-			padding: 28px 22px 48px;
+			padding: 26px 18px 44px;
 		}
 		h1, h2, h3, h4 { margin: 0 0 8px; }
 		h1 {
-			font-size: clamp(1.45rem, 2.7vw, 2.2rem);
-			line-height: 1.2;
-			background: linear-gradient(110deg, #dbe9ff 10%, var(--accent) 52%, var(--accent-2) 92%);
-			-webkit-background-clip: text;
-			background-clip: text;
-			color: transparent;
+			font-size: clamp(1.7rem, 3vw, 2.5rem);
+			line-height: 1.12;
+			font-family: "Comic Sans MS", "Segoe Print", cursive;
+			letter-spacing: 0.01em;
+			color: var(--border);
+			text-shadow: 2px 2px 0 rgba(73, 182, 229, 0.18);
 		}
 		h2 {
-			font-size: 1.2rem;
-			letter-spacing: 0.01em;
+			font-size: 1.25rem;
+			font-family: "Comic Sans MS", "Segoe Print", cursive;
+			color: var(--border);
 		}
 		h3 {
-			font-size: 0.98rem;
+			font-size: 0.96rem;
 			text-transform: uppercase;
-			letter-spacing: 0.09em;
-			color: #c8d9ff;
+			letter-spacing: 0.08em;
+			color: var(--muted);
 		}
 		p { margin: 0 0 10px; }
 		ul { margin: 8px 0 0; padding-left: 20px; }
-		li + li { margin-top: 4px; }
+		li + li { margin-top: 5px; }
 		.muted { color: var(--muted); }
 		.panel {
 			position: relative;
-			background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
-			border: 1px solid var(--border);
-			border-radius: 16px;
+			background: var(--surface);
+			border: 3px solid var(--border);
+			border-radius: 22px 18px 24px 16px;
 			padding: 18px;
-			box-shadow:
-				0 10px 35px rgba(0, 0, 0, 0.34),
-				inset 0 1px 0 rgba(255, 255, 255, 0.06);
-			backdrop-filter: blur(5px);
+			box-shadow: 6px 8px 0 rgba(38, 61, 91, 0.12);
 		}
-		.panel::after {
+		.panel::before {
 			content: "";
 			position: absolute;
-			inset: 0;
-			border-radius: inherit;
+			inset: 8px;
+			border: 2px dashed rgba(38, 61, 91, 0.12);
+			border-radius: 18px 14px 19px 13px;
 			pointer-events: none;
-			background: linear-gradient(135deg, rgba(146, 188, 255, 0.05), transparent 40%);
+		}
+		.hero-panel {
+			background: linear-gradient(180deg, rgba(255, 254, 249, 0.98), rgba(255, 250, 240, 0.98));
+		}
+		.hero-panel::after {
+			content: "✦   ◌   ✦";
+			position: absolute;
+			right: 20px;
+			top: 16px;
+			font-size: 1rem;
+			letter-spacing: 10px;
+			color: rgba(73, 182, 229, 0.55);
+			pointer-events: none;
 		}
 		.stats-groups { display: grid; gap: 12px; }
 		.stats-group {
 			padding: 13px;
-			border-radius: 12px;
-			border: 1px dashed rgba(143, 173, 227, 0.36);
-			background: linear-gradient(180deg, rgba(10, 16, 30, 0.7), rgba(8, 13, 25, 0.56));
+			border-radius: 18px 16px 20px 14px;
+			border: 2px dashed rgba(38, 61, 91, 0.35);
+			background: rgba(255, 248, 232, 0.65);
 		}
+		.stats-group:nth-child(4n + 1) { background: rgba(238, 249, 255, 0.78); }
+		.stats-group:nth-child(4n + 2) { background: rgba(255, 244, 221, 0.82); }
+		.stats-group:nth-child(4n + 3) { background: rgba(255, 239, 244, 0.82); }
+		.stats-group:nth-child(4n + 4) { background: rgba(240, 249, 235, 0.82); }
 		.grid {
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -442,46 +489,36 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 		}
 		.card {
 			position: relative;
-			background: linear-gradient(165deg, rgba(20, 30, 56, 0.85), rgba(11, 18, 34, 0.72));
-			border: 1px solid var(--border);
-			border-radius: 12px;
+			background: linear-gradient(180deg, #ffffff 0%, #fff7eb 100%);
+			border: 2px solid var(--border);
+			border-radius: 16px 12px 18px 14px;
 			padding: 12px;
-			transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+			box-shadow: 3px 4px 0 rgba(38, 61, 91, 0.09);
 		}
-		.card::before {
-			content: "";
-			position: absolute;
-			left: 10px;
-			right: 10px;
-			top: 0;
-			height: 2px;
-			background: linear-gradient(90deg, transparent, rgba(136, 193, 255, 0.75), transparent);
-			border-radius: 999px;
-		}
-		.card:hover {
-			transform: translateY(-1px);
-			border-color: var(--border-strong);
-			box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
-		}
+		.card:nth-child(3n) { transform: rotate(-0.4deg); }
+		.card:nth-child(3n + 1) { transform: rotate(0.5deg); }
+		.card:nth-child(3n + 2) { transform: rotate(-0.2deg); }
 		.value {
 			font-size: 1.12rem;
 			font-weight: 700;
 			line-height: 1.3;
+			color: var(--border);
 		}
 		.badge {
 			display: inline-block;
-			padding: 2px 9px;
+			padding: 3px 10px;
 			border-radius: 999px;
-			background: linear-gradient(180deg, rgba(127, 189, 255, 0.2), rgba(127, 189, 255, 0.09));
-			border: 1px solid rgba(124, 184, 255, 0.42);
+			background: #eef9ff;
+			border: 2px solid var(--accent);
 			font-size: 0.76rem;
 			margin-right: 6px;
 			margin-top: 4px;
+			color: var(--border);
 		}
 		.badge-error {
-			background: linear-gradient(180deg, rgba(255, 123, 123, 0.24), rgba(255, 123, 123, 0.11));
-			border-color: rgba(255, 123, 123, 0.52);
-			color: #ffd6d6;
+			background: #fff0f0;
+			border-color: var(--danger);
+			color: var(--danger);
 		}
 		.controls {
 			display: flex;
@@ -495,39 +532,43 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 			gap: 6px;
 			padding: 5px 9px;
 			border-radius: 999px;
-			border: 1px solid var(--border);
-			background: rgba(9, 14, 27, 0.7);
+			border: 2px solid var(--border);
+			background: #fffef9;
 			font-size: 0.85rem;
 			color: var(--muted);
+			box-shadow: 2px 3px 0 rgba(38, 61, 91, 0.06);
 		}
+		.controls label:nth-of-type(1) { background: #eef9ff; }
+		.controls label:nth-of-type(2) { background: #fff7df; }
+		.controls label:nth-of-type(3) { background: #fff0f6; }
 		.controls input[type="search"] {
 			flex: 1;
 			min-width: 220px;
-			background: rgba(6, 10, 20, 0.86);
-			color: var(--text);
-			border: 1px solid var(--border);
-			border-radius: 10px;
+			background: #fffef9;
+			color: var(--ink);
+			border: 2px solid var(--border);
+			border-radius: 14px;
 			padding: 9px 11px;
 			outline: none;
-			transition: border-color 140ms ease, box-shadow 140ms ease;
+			box-shadow: 2px 3px 0 rgba(38, 61, 91, 0.08);
 		}
 		.controls input[type="search"]:focus {
-			border-color: var(--border-strong);
-			box-shadow: 0 0 0 3px rgba(121, 184, 255, 0.17);
+			box-shadow: 0 0 0 4px rgba(73, 182, 229, 0.18);
 		}
-		.timeline { display: grid; gap: 12px; margin-top: 14px; }
+		.timeline { display: grid; gap: 14px; margin-top: 14px; }
 		.timeline-turn {
 			display: grid;
 			gap: 8px;
-			padding-left: 9px;
-			border-left: 2px solid rgba(125, 168, 238, 0.2);
+			padding-left: 12px;
+			border-left: 4px dashed rgba(38, 61, 91, 0.18);
 		}
 		.timeline-item,
 		.turn-group {
-			border: 1px solid var(--border);
-			border-radius: 12px;
-			background: linear-gradient(175deg, rgba(10, 16, 31, 0.82), rgba(8, 13, 23, 0.67));
+			border: 2px solid var(--border);
+			border-radius: 18px 14px 18px 12px;
+			background: var(--surface);
 			overflow: hidden;
+			box-shadow: 3px 4px 0 rgba(38, 61, 91, 0.08);
 		}
 		details > summary { list-style: none; }
 		details > summary::-webkit-details-marker { display: none; }
@@ -546,56 +587,66 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 		.timeline-item > summary::before,
 		.turn-group > summary::before,
 		.nested-expand > summary::before {
-			content: "▸";
+			content: "✎";
 			margin-right: 8px;
-			font-size: 0.8rem;
-			color: #9ec6ff;
+			font-size: 0.85rem;
+			color: var(--accent);
 			transition: transform 120ms ease;
 		}
 		.timeline-item[open] > summary::before,
 		.turn-group[open] > summary::before,
 		.nested-expand[open] > summary::before {
-			transform: rotate(90deg);
+			transform: rotate(18deg) scale(1.08);
 		}
 		.timeline-item > summary > span:first-child,
 		.turn-group > summary > span:first-child {
 			display: inline-flex;
 			align-items: center;
-			font-weight: 600;
+			font-weight: 700;
+			color: var(--border);
 		}
 		.meta {
 			text-align: right;
 			max-width: 62%;
 		}
 		.timeline-item.user {
-			border-left: 4px solid var(--success);
-			background: linear-gradient(170deg, rgba(18, 45, 44, 0.44), rgba(10, 18, 20, 0.62));
+			border-left: 7px solid var(--success);
+			background: linear-gradient(180deg, #ffffff 0%, #f4fff8 100%);
 		}
-		.timeline-item.assistant { border-left: 4px solid var(--accent); }
-		.timeline-item.toolResult { border-left: 4px solid #d2a8ff; }
-		.timeline-item.bashExecution { border-left: 4px solid #ffe08a; }
+		.timeline-item.assistant {
+			border-left: 7px solid var(--accent);
+			background: linear-gradient(180deg, #ffffff 0%, #f5fbff 100%);
+		}
+		.timeline-item.toolResult {
+			border-left: 7px solid #b38ef3;
+			background: linear-gradient(180deg, #fffefe 0%, #fbf7ff 100%);
+		}
+		.timeline-item.bashExecution {
+			border-left: 7px solid var(--accent-2);
+			background: linear-gradient(180deg, #fffefa 0%, #fff8e8 100%);
+		}
 		.turn-group {
-			border-left: 4px solid #98b1ff;
-			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+			border-left: 7px solid var(--accent-3);
+			background: linear-gradient(180deg, #fffefd 0%, #fff5f8 100%);
 		}
 		.turn-group-items {
 			display: grid;
 			gap: 8px;
 			padding: 8px;
-			border-top: 1px solid var(--border);
-			background: rgba(7, 12, 22, 0.72);
+			border-top: 2px dashed rgba(38, 61, 91, 0.2);
+			background: rgba(255, 255, 255, 0.55);
 		}
 		.content-block {
 			margin: 0;
 			padding: 12px;
 			white-space: pre-wrap;
-			font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+			font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace;
 			font-size: 0.88rem;
-			border-top: 1px solid rgba(123, 157, 214, 0.25);
-			background: linear-gradient(180deg, rgba(6, 10, 18, 0.84), rgba(4, 8, 14, 0.78));
+			border-top: 2px dashed rgba(38, 61, 91, 0.18);
+			background: rgba(255, 255, 255, 0.62);
 		}
 		.nested-expand {
-			border-top: 1px dashed rgba(132, 165, 222, 0.25);
+			border-top: 2px dashed rgba(38, 61, 91, 0.18);
 		}
 		.nested-expand > summary {
 			padding: 10px 12px;
@@ -607,19 +658,74 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 			grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 			gap: 12px;
 		}
+		.analysis-columns > .panel:nth-child(1) {
+			background: rgba(255, 228, 236, 0.92);
+		}
+		.analysis-columns > .panel:nth-child(2) {
+			background: rgba(255, 243, 199, 0.95);
+		}
+		.analysis-columns > .panel:nth-child(3) {
+			background: rgba(214, 241, 255, 0.94);
+		}
 		.analysis-item {
 			padding: 10px;
-			border-radius: 10px;
-			border: 1px solid rgba(129, 161, 214, 0.22);
-			background: rgba(8, 13, 25, 0.62);
+			border-radius: 15px 12px 16px 13px;
+			border: 2px solid rgba(38, 61, 91, 0.22);
+			background: rgba(255, 255, 255, 0.82);
 		}
-		.analysis-item + .analysis-item {
+		.analysis-columns > .panel:nth-child(1) .analysis-item { background: rgba(255, 239, 244, 0.98); }
+		.analysis-columns > .panel:nth-child(2) .analysis-item { background: rgba(255, 248, 221, 0.98); }
+		.analysis-columns > .panel:nth-child(3) .analysis-item { background: rgba(233, 248, 255, 0.98); }
+		.idea-block {
 			margin-top: 10px;
+			padding: 14px 16px;
+			border: 2px solid var(--border);
+			border-radius: 18px 14px 18px 12px;
+			background: linear-gradient(180deg, #fff7df 0%, #fff0f6 100%);
+			box-shadow: 3px 4px 0 rgba(38, 61, 91, 0.08);
+		}
+		.idea-block:nth-child(2n) {
+			background: linear-gradient(180deg, #eef9ff 0%, #fff7df 100%);
+		}
+		.idea-block p {
+			margin: 0;
+			font-size: 0.98rem;
+			line-height: 1.7;
+		}
+		.analysis-item + .analysis-item { margin-top: 10px; }
+		.analysis-label {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+			margin: 14px 0 10px;
+		}
+		.analysis-label::after {
+			content: "";
+			flex: 1;
+			height: 2px;
+			border-top: 2px dashed rgba(38, 61, 91, 0.22);
+		}
+		.analysis-note-copy {
+			margin-top: 12px;
+			padding: 12px 14px;
+			border: 2px dashed rgba(38, 61, 91, 0.28);
+			border-radius: 18px 14px 18px 12px;
+			background: rgba(255, 255, 255, 0.66);
 		}
 		.evidence {
 			font-size: 0.8rem;
 			line-height: 1.45;
 			padding-top: 4px;
+		}
+		.sketch-note {
+			display: inline-block;
+			padding: 4px 10px;
+			margin-bottom: 10px;
+			border: 2px dashed var(--border);
+			border-radius: 999px;
+			background: linear-gradient(90deg, #fff8e8, #eef9ff, #fff0f6);
+			font-size: 0.83rem;
+			color: var(--muted);
 		}
 		.hidden { display: none !important; }
 		@media (max-width: 900px) {
@@ -633,7 +739,8 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 </head>
 <body>
 	<main>
-		<section class="panel" style="margin-bottom: 14px;">
+		<section class="panel hero-panel" style="margin-bottom: 14px;">
+			<div class="sketch-note">a friendlier way to look back at the session</div>
 			<h1>${escapeHtml(report.title)}</h1>
 			<p class="muted">Generated ${escapeHtml(timestampLabel(report.generatedAtIso))} · Session ${escapeHtml(dataset.header?.id ?? "in-memory")}</p>
 			<p class="muted">Range: ${escapeHtml(timestampLabel(dataset.startTimestampIso))} → ${escapeHtml(timestampLabel(dataset.endTimestampIso))}</p>
@@ -644,21 +751,31 @@ export function renderRetrospectiveHtml(report: RetrospectiveReport): string {
 		<section class="panel" style="margin-bottom: 14px;">
 			<h2>Analysis</h2>
 			<p>${escapeHtml(analysis.summary)}</p>
+			${analysis.modeNote ? `<p class="muted">${escapeHtml(analysis.modeNote)}</p>` : ""}
+			${hasRenderableNotes ? `<div class="analysis-note-copy"><div class="sketch-note">Agent notes since last compaction</div>${analysis.agentNotes?.summary ? `<p>${escapeHtml(analysis.agentNotes.summary)}</p>` : `<p class="muted">Structured notes were available, but only the section lists were useful enough to keep.</p>`}</div>` : ""}
+			${hasRenderableNotes ? `<div class="analysis-label"><div class="sketch-note">From the notes model</div></div>` : ""}
+			${hasRenderableNotes ? `<div class="analysis-columns" style="margin-top: 12px;">${renderNotePointCards("Incorrect decisions", analysis.agentNotes?.incorrectDecisions ?? [])}${renderNotePointCards("Unnecessary effort", analysis.agentNotes?.unnecessaryEffort ?? [])}${renderNotePointCards("Unexpected findings", analysis.agentNotes?.unexpectedFindings ?? [])}</div>` : ""}
+			<div class="analysis-label"><div class="sketch-note">Heuristic signals</div></div>
 			<div class="analysis-columns" style="margin-top: 12px;">
 				${renderAnalysisPoints("Incorrect decisions", analysis.incorrectDecisions)}
 				${renderAnalysisPoints("Unnecessary effort", analysis.unnecessaryEffort)}
 				${renderAnalysisPoints("Unexpected findings", analysis.unexpectedFindings)}
 			</div>
 			<section class="panel" style="margin-top: 12px;">
-				<h3>What to do better</h3>
+				<h3>What would help next time</h3>
+				<p class="muted">Smaller adjustments that would probably make the session cleaner or faster.</p>
 				${improvements}
 			</section>
-			${notesSection ?? ""}
+			<section class="panel" style="margin-top: 12px;">
+				<h3>If we did this again</h3>
+				<p class="muted">Bigger-picture changes: how I would approach it differently, and what both of us could do to make the collaboration smoother from the start.</p>
+				${doDifferentlyAgain}
+			</section>
 		</section>
 
 		<section class="panel">
 			<h2>Conversation timeline</h2>
-			<p class="muted">Everything between user prompts is grouped into one collapsible activity block.</p>
+			<p class="muted">Newest at the top. Everything that happened between user messages is bundled into one expandable activity block.</p>
 			<div class="controls" style="margin-top: 10px;">
 				<input id="search" type="search" placeholder="Search timeline..." />
 				<label><input id="toggle-tools" type="checkbox" checked /> tool results</label>

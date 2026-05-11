@@ -23,6 +23,16 @@ The second purpose is to capture the user preferences for you, the PI agent. Thi
     - common mistakes
     - user preferences
 
+## VISION.md Policy
+- The purpose of this file is to capture the user's vision. It should *not* serve as a task list and you should not race to implement it. You should only use it as a source of context ment for better understanding of the users intent.
+- This is always a local file, stored at `.agents/rules/VISION.md`. But it often will not exist.
+- If you are working on a bigger project and you don't know where the user is going with it, ask them to create one.
+- It should capture:
+    - the scope of the project (Is it only for the user? Or a proof of concept? Or a production-ready project?...)
+    - the implementation approach (How many people are devs? What code do we touch? How do we test?...)
+    - the partitioning of the project
+    - of course the vision itself
+
 ---
 
 ## Environment
@@ -67,3 +77,8 @@ If relevant, this should be a part of the final output of any agent. When in dou
 
 ### Typecheck
 - typecheck if possible after completing a task.
+
+### Teamwork (if working on a project with other people)
+- Pay more attention to big changes as they will disrupt the work of others.
+- Check the commits and blame more often
+- If new commits are found, keep in mind that the project is in a new state and you should understand and respect the changes.

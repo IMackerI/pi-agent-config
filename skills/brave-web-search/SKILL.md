@@ -22,6 +22,17 @@ Do **not** use CDP local-debug tools for internet search unless the user explici
 3. Summarize top matches with source links.
 4. If query is ambiguous, run follow-up searches with refined terms.
 
+## Pairing with `llm-context` (optional)
+
+Use both tools as a two-step workflow when deeper understanding is needed:
+
+1. **Discover sources** with `brave_web_search`.
+2. **Read/extract grounding content** from top results with `llm-context`.
+
+Routing rule:
+- Use `brave_web_search` for fast discovery and ranking.
+- Use `llm-context` when you need more than snippets (deeper page content for synthesis/grounding).
+
 ## Query guidance
 
 - Prefer specific intent terms (`site:`, version names, error text snippets) for technical issues.
