@@ -56,6 +56,11 @@ The oldText must match exactly and be unique.
 ### Backticks and XML in `write` / `edit` content
 Content containing backticks, XML-like tags, or tool invocation syntax will confuse the tool call parser — it interprets them as real tool boundaries.
 
+### Copyable text
+There is an extension for copying fenced blocks. If you want something to be copyable, use them.
+- Avoid wrapping copyable shell commands in inline backticks when a plain line or fenced block would copy more cleanly.
+- Avoid console prompts and $ or > characters in copyable blocks.
+
 ---
 
 ## User Preferences
