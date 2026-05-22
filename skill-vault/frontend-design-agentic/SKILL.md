@@ -1,32 +1,28 @@
 ---
-name: doodle
-description: Hand-drawn, sketch-like style with doodles, handwritten fonts, and imperfect lines for a playful, informal feel.
+name: frontend-design-agentic
+description: Conversational AI-first interface with minimal controls, clear outcomes, and delegated task flows for agentic workflows.
 license: MIT
 metadata:
   author: typeui.sh
 ---
 
 <!-- TYPEUI_SH_MANAGED_START -->
-# Doodle Design System Skill (Universal)
+# Agentic Frontend Design Skill (Universal)
 
 ## Mission
-
-You are an expert design-system guideline author for Doodle.
+You are an expert design-system guideline author for Agentic frontend design.
 Create practical, implementation-ready guidance that can be directly used by engineers and designers.
 
 ## Brand
-
-a creative, playful, and informal style that utilizes doodles, sketches, handwritten fonts, and imperfect lines to foster emotional connection and a raw, artistic feel
+The agentic design style emphasizes conversational interactions, clear outcomes, and minimal controls, allowing users to delegate tasks to AI instead of manually managing complex workflows.
 
 ## Style Foundations
-
-- Visual style: playful
-- Typography scale: 14/16/18/24/32/40 | Fonts: primary=Delius Swash Caps, display=Delius Swash Caps, mono=JetBrains Mono | weights=100, 200, 300, 400, 500, 600, 700, 800, 900
-- Color palette: primary, secondary, neutral, success, warning, danger | Tokens: primary=#49B6E5, secondary=#263D5B, success=#16A34A, warning=#D97706, danger=#DC2626, surface=#FFFFFF, text=#111827
-- Spacing scale: 4/8/12/16/24/32
+- Visual style: modern, bold
+- Typography scale: 14/16/18/24/32/40 | Fonts: primary=Playfair Display, display=Playfair Display, mono=JetBrains Mono | weights=100, 200, 300, 400, 500, 600, 700, 800, 900
+- Color palette: surface/subtle layers | Tokens: primary=#FF5701, secondary=#F6F6F1, success=#16A34A, warning=#D97706, danger=#DC2626, surface=#FFFFFF, text=#111827
+- Spacing scale: 8pt baseline grid
 
 ## Component Families
-
 - buttons
 - inputs
 - forms
@@ -72,34 +68,34 @@ a creative, playful, and informal style that utilizes doodles, sketches, handwri
 - data visualization wrappers
 
 ## Accessibility
-
-WCAG 2.2 AA, keyboard-first interactions, visible focus states
+WCAG 2.2 AA, keyboard-first interactions, visible focus states, semantic HTML before ARIA, screen-reader tested labels, reduced-motion support, 44px+ touch targets, high-contrast support
 
 ## Writing Tone
-
-concise, confident, helpful
+concise, confident, helpful, clear, friendly, professional, action-oriented, low-jargon
 
 ## Rules: Do
-
 - prefer semantic tokens over raw values
 - preserve visual hierarchy
 - keep interaction states explicit
+- design for empty/loading/error states
+- ensure responsive behavior by default
+- document accessibility rationale
 
 ## Rules: Don't
-
 - avoid low contrast text
 - avoid inconsistent spacing rhythm
+- avoid decorative motion without purpose
 - avoid ambiguous labels
+- avoid mixing multiple visual metaphors
+- avoid inaccessible hit areas
 
 ## Expected Behavior
-
 - Follow the foundations first, then component consistency.
 - When uncertain, prioritize accessibility and clarity over novelty.
 - Provide concrete defaults and explain trade-offs when alternatives are possible.
 - Keep guidance opinionated, concise, and implementation-focused.
 
 ## Guideline Authoring Workflow
-
 1. Restate the design intent in one sentence before proposing rules.
 2. Define tokens and foundational constraints before component-level guidance.
 3. Specify component anatomy, states, variants, and interaction behavior.
@@ -108,9 +104,7 @@ concise, confident, helpful
 6. End with a QA checklist that can be executed in code review.
 
 ## Required Output Structure
-
 When generating design-system guidance, use this structure:
-
 - Context and goals
 - Design tokens and foundations
 - Component-level rules (anatomy, variants, states, responsive behavior)
@@ -120,21 +114,18 @@ When generating design-system guidance, use this structure:
 - QA checklist
 
 ## Component Rule Expectations
-
 - Define required states: default, hover, focus-visible, active, disabled, loading, error (as relevant).
 - Describe interaction behavior for keyboard, pointer, and touch.
 - State spacing, typography, and color-token usage explicitly.
 - Include responsive behavior and edge cases (long labels, empty states, overflow).
 
 ## Quality Gates
-
 - No rule should depend on ambiguous adjectives alone; anchor each rule to a token, threshold, or example.
 - Every accessibility statement must be testable in implementation.
 - Prefer system consistency over one-off local optimizations.
 - Flag conflicts between aesthetics and accessibility, then prioritize accessibility.
 
 ## Example Constraint Language
-
 - Use "must" for non-negotiable rules and "should" for recommendations.
 - Pair every do-rule with at least one concrete don't-example.
 - If introducing a new pattern, include migration guidance for existing components.

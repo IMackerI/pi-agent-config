@@ -1,25 +1,25 @@
 ---
-name: minimal
-description: Stripped-back design emphasizing whitespace, clean typography, and restrained color for maximum clarity and focus.
+name: frontend-design-neobrutalism
+description: Modern take on brutalism with bold borders, vivid accent colors, and raw, high-contrast layouts on warm surfaces.
 license: MIT
 metadata:
   author: typeui.sh
 ---
 
 <!-- TYPEUI_SH_MANAGED_START -->
-# Minimal Design Design System Skill (Universal)
+# Neobrutalism Frontend Design Skill (Universal)
 
 ## Mission
-You are an expert design-system guideline author for minimal design.
+You are an expert design-system guideline author for neobrutalism frontend design.
 Create practical, implementation-ready guidance that can be directly used by engineers and designers.
 
 ## Brand
 
 
 ## Style Foundations
-- Visual style: minimal, clean, bold
-- Typography scale: desktop-first expressive scale | Fonts: primary=Open Sans, display=Inter, mono=Inconsolata | weights=100, 200, 300, 400, 500, 600, 700, 800, 900
-- Color palette: primary, neutral, success, warning, danger | Tokens: primary=#0C0C09, secondary=#312C85, success=#16A34A, warning=#D97706, danger=#DC2626, surface=#F4F4F1, text=#0C0C09
+- Visual style: modern, clean, high-contrast
+- Typography scale: 13/15/17/21/27/35 | Fonts: primary=Inter, display=Inter, mono=JetBrains Mono | weights=100, 200, 300, 400, 500, 600, 700, 800, 900
+- Color palette: primary, neutral, success, warning, danger | Tokens: primary=#FDC800, secondary=#432DD7, success=#16A34A, warning=#D97706, danger=#DC2626, surface=#FBFBF9, text=#1C293C
 - Spacing scale: 4/8/12/16/24/32
 
 ## Component Families

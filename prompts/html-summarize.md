@@ -7,7 +7,16 @@ Additional user guidance:
 $ARGUMENTS
 
 Requirements:
-1. Pick **one random** website-design theme from the skills in website-design.
+1. Pick **one random** themed frontend design skill.
+   - Prefer a currently scoped/loaded themed `frontend-design-*` skill if available.
+   - Otherwise read one from `~/.pi/agent/skill-vault` and use one of these as the theme source:
+     - frontend-design-agentic
+     - frontend-design-dithered
+     - frontend-design-doodle
+     - frontend-design-minimal
+     - frontend-design-neobrutalism
+     - frontend-design-vintage
+   - Do not use `frontend-design-general` as the random theme.
 2. Summarize progress so far with focus on:
    - original goal(s)
    - key implementation steps completed, in detail

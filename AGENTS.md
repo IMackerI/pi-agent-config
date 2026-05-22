@@ -61,11 +61,14 @@ There is an extension for copying fenced blocks. If you want something to be cop
 - Avoid wrapping copyable shell commands in inline backticks when a plain line or fenced block would copy more cleanly.
 - Avoid console prompts and $ or > characters in copyable blocks.
 
+### `pi config` scope
+`pi config` writes to the scope of the toggled resource, so toggling a user-scoped entry is a global change.
+
 ---
 
 ## User Preferences
 
-### Be concise
+### Be concise (important)
 Thinking tokens are cheap, but the tokens you output to the user are expensive - the user reads them slowly and they cost him time. You want to minimize the output tokens while maintaining all the information.
 - Don't repeat yourself
 - The important part isn't always the summary, but your notes and reporting.

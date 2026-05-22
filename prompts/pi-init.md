@@ -33,16 +33,21 @@ Do the setup work, don't make a plan.
      - implementation approach
      - project partitioning
      - the vision itself
-5. Discover useful skills for this specific project.
+5. Reuse skills before fetching anything new.
    - Infer major frameworks, libraries, and workflows from the repo.
-   - Use the find-skills skill to look for existing skills.
+   - Check currently available skills, `.pi/settings.json`, `~/.pi/agent/skill-vault`, `~/.pi/agent/settings.json`, and installed packages first.
+   - Prefer already installed skills/packages over searching for new ones.
+   - For vault skills, prefer `/scope-skill` or adding absolute skill paths to `.pi/settings.json`.
+   - If a relevant package exists only at user scope, note that toggling it in `pi config` will change global settings, not just this repo.
+6. Discover useful skills for this specific project.
+   - Use the find-skills skill only for gaps not already covered by the existing setup.
    - Verify quality before choosing.
-   - Install the relevant skills locally for the project.
-6. Fill important gaps.
+   - When adding third-party skills for this repo, prefer project-local setup when possible.
+7. Fill important gaps.
    - For major libraries or workflows that do not have a good existing skill, use the library-to-skill skill.
    - Create those generated skills locally inside .agents/skills.
    - Keep generated skills narrow, practical, and source-backed.
-7. Finish with a short report listing:
+8. Finish with a short report listing:
    - files created
    - skills installed locally
    - skills created locally
@@ -53,3 +58,5 @@ Important:
 - Prefer supported local project paths from the current pi setup over invented ones.
 - Keep the created project guidance concise.
 - If a third-party skill install looks risky or there are multiple equally plausible choices, explain that and ask once before installing.
+- Prefer reuse-first recommendations such as “this is already installed; scope it locally” before suggesting a fresh install.
+- Mention `/scope-skill` when a repo would benefit from skills that already exist in the user skill vault.

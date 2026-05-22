@@ -1,28 +1,32 @@
 ---
-name: dithered
-description: Dot-pattern rendering technique that simulates shades with a limited palette for nostalgic, retro, high-contrast visuals.
+name: frontend-design-doodle
+description: Hand-drawn, sketch-like style with doodles, handwritten fonts, and imperfect lines for a playful, informal feel.
 license: MIT
 metadata:
   author: typeui.sh
 ---
 
 <!-- TYPEUI_SH_MANAGED_START -->
-# dithered Design System Skill (Universal)
+# Doodle Frontend Design Skill (Universal)
 
 ## Mission
-You are an expert design-system guideline author for dithered.
+
+You are an expert design-system guideline author for doodle frontend design.
 Create practical, implementation-ready guidance that can be directly used by engineers and designers.
 
 ## Brand
-Dithered Is a technique that uses patterns of dots to simulate shades and colors with a limited palette within modern digital interfaces to create nostalgic, retro, or high-contrast, artistic visual styles
+
+a creative, playful, and informal style that utilizes doodles, sketches, handwritten fonts, and imperfect lines to foster emotional connection and a raw, artistic feel
 
 ## Style Foundations
-- Visual style: modern, minimal
-- Typography scale: 14/16/18/24/32/40 | Fonts: primary=Open Sans, display=Space Grotesk, mono=IBM Plex Mono | weights=100, 200, 300, 400, 500, 600, 700, 800, 900
-- Color palette: primary, neutral, success, warning, danger | Tokens: primary=#3B82F6, secondary=#8B5CF6, success=#16A34A, warning=#D97706, danger=#DC2626, surface=#FFFFFF, text=#111827
+
+- Visual style: playful
+- Typography scale: 14/16/18/24/32/40 | Fonts: primary=Delius Swash Caps, display=Delius Swash Caps, mono=JetBrains Mono | weights=100, 200, 300, 400, 500, 600, 700, 800, 900
+- Color palette: primary, secondary, neutral, success, warning, danger | Tokens: primary=#49B6E5, secondary=#263D5B, success=#16A34A, warning=#D97706, danger=#DC2626, surface=#FFFFFF, text=#111827
 - Spacing scale: 4/8/12/16/24/32
 
 ## Component Families
+
 - buttons
 - inputs
 - forms
@@ -68,32 +72,34 @@ Dithered Is a technique that uses patterns of dots to simulate shades and colors
 - data visualization wrappers
 
 ## Accessibility
+
 WCAG 2.2 AA, keyboard-first interactions, visible focus states
 
 ## Writing Tone
+
 concise, confident, helpful
 
 ## Rules: Do
+
 - prefer semantic tokens over raw values
 - preserve visual hierarchy
 - keep interaction states explicit
-- design for empty/loading/error states
-- ensure responsive behavior by default
 
 ## Rules: Don't
+
 - avoid low contrast text
 - avoid inconsistent spacing rhythm
-- avoid decorative motion without purpose
 - avoid ambiguous labels
-- avoid inaccessible hit areas
 
 ## Expected Behavior
+
 - Follow the foundations first, then component consistency.
 - When uncertain, prioritize accessibility and clarity over novelty.
 - Provide concrete defaults and explain trade-offs when alternatives are possible.
 - Keep guidance opinionated, concise, and implementation-focused.
 
 ## Guideline Authoring Workflow
+
 1. Restate the design intent in one sentence before proposing rules.
 2. Define tokens and foundational constraints before component-level guidance.
 3. Specify component anatomy, states, variants, and interaction behavior.
@@ -102,7 +108,9 @@ concise, confident, helpful
 6. End with a QA checklist that can be executed in code review.
 
 ## Required Output Structure
+
 When generating design-system guidance, use this structure:
+
 - Context and goals
 - Design tokens and foundations
 - Component-level rules (anatomy, variants, states, responsive behavior)
@@ -112,18 +120,21 @@ When generating design-system guidance, use this structure:
 - QA checklist
 
 ## Component Rule Expectations
+
 - Define required states: default, hover, focus-visible, active, disabled, loading, error (as relevant).
 - Describe interaction behavior for keyboard, pointer, and touch.
 - State spacing, typography, and color-token usage explicitly.
 - Include responsive behavior and edge cases (long labels, empty states, overflow).
 
 ## Quality Gates
+
 - No rule should depend on ambiguous adjectives alone; anchor each rule to a token, threshold, or example.
 - Every accessibility statement must be testable in implementation.
 - Prefer system consistency over one-off local optimizations.
 - Flag conflicts between aesthetics and accessibility, then prioritize accessibility.
 
 ## Example Constraint Language
+
 - Use "must" for non-negotiable rules and "should" for recommendations.
 - Pair every do-rule with at least one concrete don't-example.
 - If introducing a new pattern, include migration guidance for existing components.
