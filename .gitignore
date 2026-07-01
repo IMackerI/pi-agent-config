@@ -4,6 +4,7 @@ sessions/
 git/
 settings.json
 keybindings.json
+trust.json
 
 # Build / tooling artifacts
 node_modules/
@@ -14,3 +15,5 @@ node_modules/
 
 # Repo Maintenance
 REPO.md
+
+IDEAS.md
