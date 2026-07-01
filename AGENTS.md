@@ -16,8 +16,8 @@ The second purpose is to capture the user preferences for you, the PI agent. Thi
 - Use Project AGENTS.md to note down project-specific quirks, that surprised you.
 - Don't duplicate anything from this file. Agent can see both of them.
 - Prepare the file:
-- At the top there should be a note to keep the file minimalistic, and to note mostly surprising things that future agents should be aware of.
-- Add a section for (at init empty, for the agent to fill in)
+-  At the top there should be a note to keep the file minimalistic, and to note mostly surprising things that future agents should be aware of.
+-  Add a section for (at init empty, for the agent to fill in)
     - project-specific environment notes
     - important commands
     - common mistakes
@@ -69,7 +69,7 @@ There is an extension for copying fenced blocks. If you want something to be cop
 ## User Preferences
 
 ### Be concise (important)
-Thinking tokens are cheap, but the tokens you output to the user are expensive - the user reads them slowly and they cost him time. You want to minimize the output tokens while maintaining all the information.
+Thinking tokens are cheap, but the tokens you output to the user are expensive - the user reads them slowly and they cost him time. **You want to minimize the output tokens while giving a good response.**
 - Don't repeat yourself
 - The important part isn't always the summary, but your notes and reporting.
 - If the user wants to know more detailed output, they will ask. Default to shorter responses.
@@ -90,3 +90,26 @@ If relevant, this should be a part of the final output of any agent. When in dou
 - Pay more attention to big changes as they will disrupt the work of others.
 - Check the commits and blame more often
 - If new commits are found, keep in mind that the project is in a new state and you should understand and respect the changes.
+
+### Use external libraries
+Integrating libraries for standard tasks can save a lot of code and make the codebase more readable and maintainable. Unless stated otherwise don't hesitate to add libraries to make code more elegant. I usually don't mind newer and less standard libraries which do a thing well.
+
+### Code practices
+
+#### From Redis manifesto - what to follow
+- We're against complexity. We believe designing systems is a fight against complexity. We'll accept to fight the complexity when it's worthwhile but we'll try hard to recognize when a small feature is not worth 1000s of lines of code. Most of the time the best way to fight complexity is by not creating it at all.
+- We optimize for joy. We believe writing code is a lot of hard work, and the only way it can be worth is by enjoying it. When there is no longer joy in writing code, the best thing to do is stop. To prevent this, we'll avoid taking paths that will make Redis less of a joy to develop.
+
+#### Tiger style - what to follow
+I would avoid some tiger style practices - we are probably not developing important applications.
+Simplicity can therefore sometimes beat durability.
+- Simplicity is not a free pass. It's not in conflict with our design goals. It need not be a concession or a compromise.
+“...simple and elegant systems tend to be easier and faster to design and get right, more efficient in execution, and much more reliable, [but] require hard work and discipline to achieve…”
+— Edsger Dijkstra
+
+#### Simplicity
+- We should aim for simplicity because simplicity is a prerequisite for reliability.
+- Build simple systems by: 
+Abstracting - design by answering questions related to what, who, when, where, why, and how.
+Choosing constructs that generate simple artifacts.
+Simplify by encapsulation.
