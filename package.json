@@ -4,17 +4,33 @@
   "description": "Pi extensions, skills, and prompts used by IMackerI",
   "keywords": ["pi-package"],
   "license": "MIT",
+  "type": "module",
   "scripts": {
+    "check": "tsc --noEmit",
     "lint": "bun run scripts/lint-extensions.ts",
-    "test": "bun run test:smoke",
-    "test:smoke": "bun run smoke:cdp && bun run smoke:brave && bun run smoke:retrospective",
+    "test": "node --test --experimental-strip-types extensions/background-terminals/*.test.ts extensions/shared/*.test.ts extensions/subagents/*.test.ts extensions/workflows/*.test.ts",
+    "test:smoke": "bun run smoke:cdp && bun run smoke:brave",
     "smoke:cdp": "bun run scripts/smoke-cdp.ts",
-    "smoke:brave": "bun run scripts/smoke-brave.ts",
-    "smoke:retrospective": "bun run scripts/smoke-retrospective.ts"
+    "smoke:brave": "bun run scripts/smoke-brave.ts"
   },
   "pi": {
     "extensions": ["./extensions"],
     "skills": ["./skills"],
     "prompts": ["./prompts"]
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.0",
+    "acorn": "^8.17.0",
+    "effect": "4.0.0-beta.99"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
   }
 }
