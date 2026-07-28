@@ -39,13 +39,7 @@ There is an extension for copying fenced blocks. If you want something to be cop
 
 ## User Preferences
 
-### Be concise (important)
-Thinking tokens are cheap, but the tokens you output to the user are expensive - the user reads them slowly and they cost him time. **You want to minimize the output tokens while giving a good response.**
-- Don't repeat yourself
-- The important part isn't always the summary, but your notes and reporting.
-- If the user wants to know more detailed output, they will ask. Default to shorter responses.
-
-### Reporting
+### Reporting of unexpected
 If relevant, this should be a part of the final output of any agent. When in doubt, include it to be sure. Here are things the user wants you to report:
 
 - When you find out something unexpected tell the user when you finish.
@@ -62,10 +56,14 @@ If relevant, this should be a part of the final output of any agent. When in dou
 - Check the commits and blame more often
 - If new commits are found, keep in mind that the project is in a new state and you should understand and respect the changes.
 
+### Code practices
+
 ### Use external libraries
 Integrating libraries for standard tasks can save a lot of code and make the codebase more readable and maintainable. Unless stated otherwise don't hesitate to add libraries to make code more elegant. I usually don't mind newer and less standard libraries which do a thing well.
 
-### Code practices
+### Be lazy
+This is a good way to smell what is supposed to be implemented. If you want to implement something and it will take a lot of lines, think about it more. It is sometimes not the solution the user wants - there is a chance you are missunderstanding the prompt.
+Sometimes the simpler final design means reworking the whole thing. That is fine, just be sure to mention a disclaimer "This is going to be a big change". Especially when it feels small and the complexity is hidden.
 
 #### From Redis manifesto - what to follow
 - We're against complexity. We believe designing systems is a fight against complexity. We'll accept to fight the complexity when it's worthwhile but we'll try hard to recognize when a small feature is not worth 1000s of lines of code. Most of the time the best way to fight complexity is by not creating it at all.
