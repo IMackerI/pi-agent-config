@@ -56,7 +56,15 @@ If relevant, this should be a part of the final output of any agent. When in dou
 - Check the commits and blame more often
 - If new commits are found, keep in mind that the project is in a new state and you should understand and respect the changes.
 
-### Code practices
+### Subagents
+- Default to lower reasoning levels for bounded well defined work.
+- Use higher reasoning (high, xhigh) only for impactfull or difficult tasks.
+- For simple tasks, or use gpt-5.3-spark where possible (it is very quick, but not too smart)
+- Don't overuse subagents. Use them only when tasked with big tasks.
+- Don't use subagents for tasks reqiring small amount of work and a lot of context (that you already have, but agent must spend time gaining).
+- Don't use older than the newest models (except 5.3 spark if you need the speed)
+
+## Code practices
 
 ### Use external libraries
 Integrating libraries for standard tasks can save a lot of code and make the codebase more readable and maintainable. Unless stated otherwise don't hesitate to add libraries to make code more elegant. I usually don't mind newer and less standard libraries which do a thing well.
