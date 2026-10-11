@@ -27,6 +27,7 @@ Keep this file minimalistic. There should be very few words but they should be o
 - Shell: The user uses `fish`; pi should use `bash` internally.
 - Python: always use a project-local `.venv`, managed with `uv`
 - JavaScript tooling: prefer `bun` / `bunx` over `npm`
+- Skills: install and maintain real directories in `~/.pi/agent/skills/`.
 
 ---
 
